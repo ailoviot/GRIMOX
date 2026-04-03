@@ -1,0 +1,16 @@
+{
+  "name": "grimox-node-cli",
+  "version": "0.0.1",
+  "type": "module",
+  "bin": {
+    "my-cli": "./bin/cli.js"
+  },
+  "scripts": {
+    "dev": "node bin/cli.js",
+    "link": "npm link"
+  },
+  "dependencies": {
+    "commander": "^13.1.0",
+    "picocolors": "^1.1.0"
+  }
+}

@@ -1,0 +1,3 @@
+WIFI_SSID = ''
+WIFI_PASSWORD = ''
+LED_PIN = 2

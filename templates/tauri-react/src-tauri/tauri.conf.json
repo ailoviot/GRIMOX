@@ -1,0 +1,21 @@
+{
+    "productName": "grimox-tauri",
+    "version": "0.1.0",
+    "identifier": "com.grimox.tauri",
+    "build": {
+        "frontendDist": "../dist",
+        "devUrl": "http://localhost:5173",
+        "beforeDevCommand": "npm run dev -- --no-open",
+        "beforeBuildCommand": "npm run build"
+    },
+    "app": {
+        "title": "Grimox Tauri",
+        "windows": [
+            {
+                "title": "Grimox Tauri",
+                "width": 900,
+                "height": 600
+            }
+        ]
+    }
+}

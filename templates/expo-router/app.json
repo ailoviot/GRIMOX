@@ -1,0 +1,10 @@
+{
+    "expo": {
+        "name": "grimox-expo",
+        "slug": "grimox-expo",
+        "version": "1.0.0",
+        "scheme": "grimox-expo",
+        "platforms": ["ios", "android", "web"],
+        "plugins": ["expo-router"]
+    }
+}
