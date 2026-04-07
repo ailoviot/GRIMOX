@@ -28,9 +28,12 @@ export async function runCreatePrompts(initialName, options = {}) {
         validate: validateProjectName,
     }));
 
-    if (typeof projectName === 'string' && validateProjectName(projectName)) {
-        p.log.error(validateProjectName(projectName));
-        return null;
+    if (typeof projectName === 'string') {
+        const error = validateProjectName(projectName);
+        if (error) {
+            p.log.error(error);
+            return null;
+        }
     }
 
     // 2. Tipo de aplicación

@@ -38,6 +38,38 @@ export async function inject(projectPath, config) {
         };
     }
 
+    if (config.database === 'mongodb') {
+        mcpConfig.mcpServers['mongodb'] = {
+            command: 'npx',
+            args: ['-y', '@modelcontextprotocol/server-mongodb'],
+            env: {
+                MONGODB_URI: '${MONGODB_URI}',
+            },
+        };
+    }
+
+    if (config.database === 'redis') {
+        mcpConfig.mcpServers['redis'] = {
+            command: 'npx',
+            args: ['-y', '@modelcontextprotocol/server-redis'],
+            env: {
+                REDIS_URL: '${REDIS_URL:redis://localhost:6379}',
+            },
+        };
+    }
+
+    if (config.database === 'oracle') {
+        mcpConfig.mcpServers['oracle'] = {
+            command: 'npx',
+            args: ['-y', '@modelcontextprotocol/server-oracle'],
+            env: {
+                ORACLE_CONNECTION_STRING: '${ORACLE_CONNECTION_STRING}',
+                ORACLE_USER: '${ORACLE_USER}',
+                ORACLE_PASSWORD: '${ORACLE_PASSWORD}',
+            },
+        };
+    }
+
     // Servidor MCP de filesystem (útil para todos los proyectos)
     mcpConfig.mcpServers['filesystem'] = {
         command: 'npx',

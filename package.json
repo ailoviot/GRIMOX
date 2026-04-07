@@ -10,13 +10,25 @@
         "bin/",
         "src/"
     ],
+    "publishConfig": {
+        "access": "public"
+    },
     "engines": {
         "node": ">=18.0.0"
     },
     "scripts": {
         "dev": "node bin/grimox.js",
         "test": "vitest",
-        "lint": "eslint src/"
+        "lint": "eslint src/",
+        "prepublishOnly": "npm run lint"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/ailoviot/GRIMOX.git"
+    },
+    "homepage": "https://github.com/ailoviot/GRIMOX#readme",
+    "bugs": {
+        "url": "https://github.com/ailoviot/GRIMOX/issues"
     },
     "dependencies": {
         "@clack/prompts": "^0.10.0",
@@ -33,7 +45,13 @@
         "migration",
         "fullstack",
         "iot",
-        "grimox"
+        "grimox",
+        "oracle",
+        "supabase",
+        "firebase",
+        "postgresql",
+        "mongodb",
+        "redis"
     ],
     "author": "Alexander (Alex)",
     "license": "MIT"

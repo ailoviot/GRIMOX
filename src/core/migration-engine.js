@@ -154,8 +154,13 @@ async function generateMigrationPlan(projectPath, config, analysis, llmClient) {
                     }
                 });
             } else {
-                // Fallback a pasos genéricos si LLM no retorna pasos
-                writeGenericSteps(content, mig);
+                // Fallback a pasos genéricos del registry
+                content += `### Pasos de Migración\n\n`;
+                const steps = mig.steps || ['Migrar framework', 'Actualizar dependencias', 'Adaptar estructura'];
+                steps.forEach((step, i) => {
+                    content += `- [ ] ${i + 1}. ${step}\n`;
+                });
+                content += '\n';
             }
         } catch {
             // Fallback a pasos genéricos del registry

@@ -109,6 +109,8 @@ function getDbService(database) {
             return `  mongo:\n    image: mongo:7\n    ports:\n      - "27017:27017"\n    volumes:\n      - mongodata:/data/db\n\nvolumes:\n  mongodata:\n`;
         case 'redis':
             return `  redis:\n    image: redis:7-alpine\n    ports:\n      - "6379:6379"\n`;
+        case 'oracle':
+            return `  oracle:\n    image: gvenzl/oracle-xe:21-slim\n    ports:\n      - "1521:1521"\n    environment:\n      ORACLE_PASSWORD: oracle\n    volumes:\n      - oradata:/opt/oracle/oradata\n\nvolumes:\n  oradata:\n`;
         default:
             return '';
     }

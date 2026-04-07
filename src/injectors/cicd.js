@@ -107,6 +107,7 @@ jobs:
 
 function getSpringBootWorkflow(language) {
     const buildCmd = language === 'Kotlin' ? './gradlew build' : './mvnw verify';
+    const cache = language === 'Kotlin' ? 'gradle' : 'maven';
 
     return `name: CI
 
@@ -128,7 +129,7 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: 21
-          cache: '${language === 'Kotlin' ? 'gradle' : 'maven'}'
+          cache: '${cache}'
 
       - name: Build & Test
         run: ${buildCmd}
