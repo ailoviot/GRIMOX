@@ -420,22 +420,23 @@ Alex confirma. Claude Code empieza a trabajar autónomamente:
 ◇  npm run build...
   ⚠ Error: 'MascotaCard' cannot be used as a Server Component (uses useState)
   → Fix: Agregando 'use client' a MascotaCard.tsx
-  ◇  npm run build... ✓ Build exitoso
-
-◇  Verificando endpoints...
-  ✓ GET /api/mascotas → 200
-  ✓ POST /api/mascotas → 201
-  ✓ GET /api/citas → 200
-  ✓ GET /api/vacunas/recordatorios → 200
+  ◇  npm run build...
+    ├── prebuild: grimox-daemon kill-dev && grimox-daemon spawn-detached
+    ├── next build → ✓ Compilado correctamente
+    └── postbuild: grimox-qa --dynamic --auto-server
+        ├── Arrancando production server temporal: npx next start -p 3100
+        ├── Reusando browser del daemon (CDP, intento 1)
+        ├── 5 rutas auto-descubiertas — smoke tests ✓
+        └── Ejecutando flows visuales de .grimox/qa-plan.yml
+  ✓ QA pasó — 11/11 flows
 
 ────────────────────────────────────────────
- FASE 4.5: Testing Visual con Browser
+ FASE 4.5: Testing Visual reusando el browser del daemon
 ────────────────────────────────────────────
 
-◇  Verificando agent-browser... ✓ disponible
-
-◇  agent-browser open http://localhost:3000
-◇  agent-browser snapshot -i --json
+  (Todo el testing ocurrió en la misma ventana Chromium que está
+   visible desde npm install — con overlays Grimox Studio mostrando
+   estado LIVE, progress bar, toasts de cambios y flash pass/fail.)
 
   ✓ /              → Dashboard carga — KPIs reales de Supabase visibles
   ✓ /mascotas      → Tabla muestra 3 registros de seed, botón "Nueva mascota" presente
@@ -443,12 +444,11 @@ Alex confirma. Claude Code empieza a trabajar autónomamente:
   ✓ /vacunas       → Tabla con próximas fechas y estado por especie
   ✓ /facturacion   → Formulario de nueva factura sin errores visuales
 
-◇  Probando flujo de registro de mascota...
-  → agent-browser click @e_nueva_mascota
-  → agent-browser fill @e_nombre "Thor"
-  → agent-browser fill @e_especie "Perro"
-  → agent-browser click @e_guardar
-  ✓ Toast de confirmación visible — mascota creada correctamente
+  Flows ejecutados:
+  ✓ "Crear nueva mascota Thor"     — llenar form + submit + aparece en listado
+  ✓ "Crear 3 mascotas consecutivas" — listado muestra las 3 en orden
+  ✓ "Borrar mascota"               — verifica text_not_visible tras eliminar
+  ✓ "Ruta protegida sin sesión redirige a /login"
 
 ────────────────────────────────────────────
  FASE 5: Verificación Final
@@ -461,15 +461,14 @@ Alex confirma. Claude Code empieza a trabajar autónomamente:
   │  🗃️ 5 tablas + RLS + Storage configurados                 │
   │  🔐 Auth: login + register + middleware                   │
   │  📦 8 módulos implementados                               │
-  │  ✓ Build exitoso                                          │
-  │  ✓ Endpoints verificados                                  │
-  │  ✓ UI verificada en browser (5 rutas + flujo de registro) │
+  │  ✓ Build exitoso (exit 0)                                 │
+  │  ✓ QA pasó — 11/11 flows en un solo browser visible       │
   │                                                           │
   │  npm run dev → http://localhost:3000                      │
   ╰───────────────────────────────────────────────────────────╯
 ```
 
-**En 15 minutos**, Claude Code implementó toda la aplicación y la verificó visualmente — incluyendo el flujo de registro de una mascota desde el browser. Alex abre `http://localhost:3000`, registra a Thor como primer paciente, le programa una cita para el jueves, y agenda su vacuna antirrábica. Todo estaba ya verificado.
+**En 15 minutos**, Claude Code implementó toda la aplicación y la verificó visualmente — los 11 flows corrieron en la **misma ventana de Chromium** que está abierta desde `npm install` (con overlays Grimox Studio persistentes). Alex abre `http://localhost:3000`, registra a Thor como primer paciente, le programa una cita para el jueves, y agenda su vacuna antirrábica. Todo estaba ya verificado por el QA automático del postbuild — si algún flow hubiera fallado, `npm run build` habría retornado exit code 1 y Claude Code habría sido forzado a corregir antes de reportar "listo".
 
 No escribió una sola línea de código. La skill `/grimox-dev` leyó las convenciones del proyecto (GRIMOX.md, .ai/rules.md), entendió el stack (Next.js 15 + Supabase), y desarrolló todo siguiendo las mejores prácticas que Grimox configuró al crear el proyecto.
 
@@ -1083,15 +1082,24 @@ En vez de asignar esto a su equipo (que tardaría semanas), usa la skill de desa
   ✔ Colores corporativos aplicados a todos los componentes
   ✔ Tipografía Segoe UI mantenida
 
-◇  npm run build... ✓ Build exitoso
+◇  npm run build...
+    ├── prebuild: grimox-daemon kill-dev && grimox-daemon spawn-detached
+    ├── ng build --configuration production → ✓
+    └── postbuild: grimox-qa --dynamic --auto-server
+        ├── Production server temporal en :3100
+        ├── Reusando browser del daemon (ventana única visible)
+        └── 14 flows visuales de .grimox/qa-plan.yml
+  ✓ QA pasó — 14/14 flows
 ◇  Verificando integración con backend... ✓ 18/18 endpoints responden
 
-◇  agent-browser open http://localhost:4200
-◇  agent-browser snapshot -i --json
+  (Todas las verificaciones visuales corrieron dentro del único browser
+   del daemon con overlays Grimox Studio — no se abrieron ventanas
+   adicionales durante el build ni el QA.)
+
   ✓ /login         → Formulario con colores corporativos (#1a3c5e) renderiza correctamente
   ✓ /dashboard     → KPIs del día visibles, tipografía Segoe UI aplicada
-  ✓ /clientes      → Tabla CRUD con estilos Sass corporativos
-  ✓ /facturacion   → Formulario con cálculo de IVA visible
+  ✓ /clientes      → Tabla CRUD con estilos Sass corporativos + delete verificado
+  ✓ /facturacion   → Formulario con cálculo de IVA visible, flujo factura E2E
   ✓ /reportes      → Gráficas de ventas mensuales renderizan sin errores
 
   ╭───────────────────────────────────────────────────────────╮
@@ -1102,7 +1110,7 @@ En vez de asignar esto a su equipo (que tardaría semanas), usa la skill de desa
   │  📦 7 módulos implementados                               │
   │  🎨 Estilos corporativos migrados a Sass                  │
   │  ✓ Build exitoso + integración verificada                 │
-  │  ✓ UI verificada en browser (5 rutas, colores corporativos)│
+  │  ✓ QA pasó — 14/14 flows en un solo browser visible       │
   ╰───────────────────────────────────────────────────────────╯
 ```
 
@@ -1207,11 +1215,31 @@ grimox migrate
 
 | Skill | Cuándo usarla | Qué hace | Alex la usó para... | Camila la usó para... |
 |---|---|---|---|---|
-| `/grimox-dev` | Después de `grimox create` o cuando necesitas implementar funcionalidad completa. Es la skill **más importante** — convierte un scaffold vacío en una app funcional | Lee GRIMOX.md + .ai/rules.md + stack → implementa la app completa de forma autónoma: DB, auth, CRUD, UI, APIs. Verifica que compila, que los endpoints responden, y que la UI renderiza correctamente en browser con `agent-browser` (snapshots + interacciones) | Desarrollar TODA la app PetVida de cero: 34 archivos, 8 módulos (mascotas, citas, vacunas, facturación, dashboard) en 15 minutos sin escribir una línea | Construir todo el frontend Angular (28 archivos, 7 módulos) con los estilos corporativos de ContaFlex migrados a Sass |
+| `/grimox-dev` | Después de `grimox create` o cuando necesitas implementar funcionalidad completa. Es la skill **más importante** — convierte un scaffold vacío en una app funcional | Lee GRIMOX.md + .ai/rules.md + stack → implementa la app completa de forma autónoma: DB, auth, CRUD, UI, APIs. Cada `npm run build` dispara determinísticamente `grimox-qa --dynamic --auto-server` que corre flows visuales desde `.grimox/qa-plan.yml` dentro del browser persistente del daemon (una sola ventana Chromium visible con overlays Grimox Studio). Si algún flow falla, el build falla (exit ≠ 0) y el LLM se ve forzado a corregir antes de reportar "listo" | Desarrollar TODA la app PetVida de cero: 34 archivos, 8 módulos (mascotas, citas, vacunas, facturación, dashboard) en 15 minutos sin escribir una línea | Construir todo el frontend Angular (28 archivos, 7 módulos) con los estilos corporativos de ContaFlex migrados a Sass |
 | `/grimox-migrate` | Para migrar proyectos existentes archivo por archivo con guía de IA | Analiza código real, genera MIGRATION_PLAN.md con pasos específicos, snippets before/after, y puede aplicar transformaciones | — | Migrar el conector de la DIAN (380 líneas de lógica crítica con firma XML y certificados) de Express a NestJS sin romper nada |
 | `/grimox-docs` | Para documentar el proyecto o incorporar nuevos developers al equipo | Genera PROJECT_DOCS.md completo: arquitectura, API reference, componentes, schemas, variables de entorno, cómo correr y deployar | Incorporar a Daniela (junior) al proyecto — empezó a contribuir al día siguiente sin llamada de onboarding | Dar a 5 desarrolladores documentación técnica por primera vez en 8 años de ContaFlex |
 
 Las 3 skills viven en **`.ai/skills/`** — accesibles desde cualquier LLM o IDE. Claude Code y Open Code las activan automáticamente como slash commands desde `.claude/commands/` (adaptador generado en silencio). Cursor, Trae, Windsurf y Antigravity usan `.cursorrules` y `.ai/rules.md`. Copilot usa `.github/copilot-instructions.md`. Con GPT, Gemini, Grok, GLM u Ollama: abre el `.md` de la skill en `.ai/skills/` y úsalo como prompt.
+
+---
+
+## Comandos diarios en cualquier proyecto web scaffoldeado
+
+Cuando generas un stack web (Next.js, Nuxt, SvelteKit, SPAs Vite, Astro, etc.) Grimox inyecta estos scripts npm. Cuándo usar cada uno en la práctica:
+
+| Comando | Úsalo cuando |
+|---|---|
+| `npm run dev` | **Desarrollo diario.** `predev` spawnea el daemon si no está vivo. La ventana Chromium única aparece con el splash Grimox Studio y navega a tu app cuando el dev server responde |
+| `npm run build` | **Antes de commit / push.** `prebuild` libera el puerto dev (fix del `EPERM` en `.next/trace` de Windows), `next build` compila, y `postbuild` corre `grimox-qa --dynamic --auto-server` contra un production server temporal en puerto 3100. El LLM no puede reportar "listo" sin que esto pase |
+| `npm run qa` | **Rerun de QA ad-hoc** contra el dev/production server actualmente vivo, reusando el browser del daemon |
+| `npm run dev:fresh` | **Al volver al proyecto tras varios días.** Corre `grimox-daemon purge-all` (mata todos los daemons de Grimox, chromiums huérfanos de Playwright, zombies de `next start/dev`) antes de `npm run dev`. Garantía de estado limpio |
+| `npm run build:fresh` | **Antes de una demo o una run crítica tipo CI local.** La misma garantía de purga, seguida de `npm run build` |
+| `npm run daemon:purge` | **Solo la limpieza**, sin arrancar nada más. Útil si notas ventanas pegadas o múltiples daemons |
+| `npm run daemon:status` | **Debugging.** Muestra JSON con `alive`, `baseUrl`, `cdp.endpoint`, `takenOver` — te dice exactamente en qué estado está el daemon |
+| `npm run daemon:stop` | **Parada graceful.** Cierra también el browser visible |
+| `npm run daemon:demo` | **Verificación rápida de que el mecanismo daemon/browser funciona** en tu máquina (mata daemon previo, lanza uno en standby) |
+
+Día típico de Alex: `npm run dev` por la mañana, edita código, ocasional `npm run build` para verificar antes de commitear. Primera corrida de Camila tras instalar: `npm run dev:fresh` para garantizar estado limpio antes de demo al equipo.
 
 ---
 

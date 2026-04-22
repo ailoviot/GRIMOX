@@ -18,9 +18,23 @@ export const features = [
         defaultEnabled: true,
     },
     {
+        id: 'ai-agents',
+        name: 'AI Sub-agents',
+        description: '.claude/agents/grimox-qa.md para testing visual autónomo durante /grimox-dev',
+        defaultEnabled: true,
+        webOnly: true, // solo tiene sentido con UI
+    },
+    {
+        id: 'qa-cli',
+        name: 'QA Visual CLI',
+        description: 'grimox-qa CLI en postbuild de npm: QA visual determinístico universal (funciona en cualquier IDE/LLM)',
+        defaultEnabled: true,
+        webOnly: true,
+    },
+    {
         id: 'mcp',
         name: 'MCP Config',
-        description: 'Configuración de servidores MCP para agentes IA',
+        description: 'Servidores MCP para DB, filesystem y testing visual (Playwright + Chrome DevTools)',
         defaultEnabled: true,
     },
     {

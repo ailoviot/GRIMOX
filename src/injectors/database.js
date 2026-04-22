@@ -1,8 +1,13 @@
 import { join } from 'node:path';
+import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { writeFileSafe } from '../utils/fs-helpers.js';
 
 /**
- * Inyecta configuración de base de datos
+ * Inyecta configuración de base de datos.
+ *
+ * Para Supabase + frameworks modernos con SSR (Next.js 15, SvelteKit, Nuxt 4),
+ * genera la integración completa que cada framework espera (cliente browser/server,
+ * middleware de sesión, hooks). Para SPAs y APIs puras, usa el cliente plano.
  */
 export async function inject(projectPath, config) {
     if (!config.database) return;
@@ -11,11 +16,399 @@ export async function inject(projectPath, config) {
         ? config.backend?.language
         : config.language;
 
-    const dbConfig = getDbConfig(config.database, language);
+    const stackId = config.isDecoupled
+        ? config.frontend?.stackId
+        : config.stackId;
 
+    // Supabase tiene paths específicos por framework (SSR moderno)
+    if (config.database === 'supabase') {
+        if (stackId === 'nextjs-15') {
+            await injectNextJsSupabase(projectPath, language);
+            return;
+        }
+        if (stackId === 'sveltekit') {
+            await injectSvelteKitSupabase(projectPath);
+            return;
+        }
+        if (stackId === 'nuxt-4') {
+            await injectNuxtSupabase(projectPath);
+            return;
+        }
+    }
+
+    // Fallback: generador genérico (SPAs, APIs, otros DBs)
+    const dbConfig = getDbConfig(config.database, language);
     if (dbConfig) {
         await writeFileSafe(join(projectPath, dbConfig.path), dbConfig.content);
     }
+
+    if (['JavaScript', 'TypeScript'].includes(language)) {
+        addNodeDeps(projectPath, config.database, language);
+    } else if (language === 'Python') {
+        addPythonDeps(projectPath, config.database);
+    }
+}
+
+/**
+ * Next.js 15 App Router + Supabase SSR.
+ * Genera client browser, server (RSC + Server Actions), middleware de sesión,
+ * y el src/middleware.ts raíz que Next requiere.
+ */
+async function injectNextJsSupabase(projectPath, language) {
+    const ext = language === 'JavaScript' ? 'js' : 'ts';
+
+    mergeNodeDeps(projectPath, {
+        deps: {
+            '@supabase/ssr': '^0.5.0',
+            '@supabase/supabase-js': '^2.45.0',
+        },
+    });
+
+    await writeFileSafe(
+        join(projectPath, 'src', 'lib', 'supabase', `client.${ext}`),
+        `import { createBrowserClient } from '@supabase/ssr';
+
+export function createClient() {
+    return createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+}
+`
+    );
+
+    await writeFileSafe(
+        join(projectPath, 'src', 'lib', 'supabase', `server.${ext}`),
+        `import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+
+type CookieToSet = { name: string; value: string; options: CookieOptions };
+
+export async function createClient() {
+    const cookieStore = await cookies();
+
+    return createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+            cookies: {
+                getAll() {
+                    return cookieStore.getAll();
+                },
+                setAll(cookiesToSet: CookieToSet[]) {
+                    try {
+                        cookiesToSet.forEach(({ name, value, options }) => {
+                            cookieStore.set(name, value, options);
+                        });
+                    } catch {
+                        // setAll llamado desde Server Component — ignorar. El middleware
+                        // ya refrescó la sesión antes de llegar aquí.
+                    }
+                },
+            },
+        }
+    );
+}
+`
+    );
+
+    await writeFileSafe(
+        join(projectPath, 'src', 'lib', 'supabase', `middleware.${ext}`),
+        `import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { NextResponse, type NextRequest } from 'next/server';
+
+type CookieToSet = { name: string; value: string; options: CookieOptions };
+
+/**
+ * Refresca la sesión de Supabase antes de que llegue al Server Component.
+ * Protege rutas /dashboard redirigiendo a /login si no hay sesión.
+ * Redirige /login a /dashboard si el usuario YA está autenticado.
+ */
+export async function updateSession(request: NextRequest) {
+    let response = NextResponse.next({ request });
+
+    const supabase = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+            cookies: {
+                getAll() {
+                    return request.cookies.getAll();
+                },
+                setAll(cookiesToSet: CookieToSet[]) {
+                    cookiesToSet.forEach(({ name, value }) =>
+                        request.cookies.set(name, value)
+                    );
+                    response = NextResponse.next({ request });
+                    cookiesToSet.forEach(({ name, value, options }) =>
+                        response.cookies.set(name, value, options)
+                    );
+                },
+            },
+        }
+    );
+
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    const { pathname } = request.nextUrl;
+    const isAuthRoute = pathname.startsWith('/login') || pathname.startsWith('/register');
+    const isProtected = pathname.startsWith('/dashboard');
+
+    if (!user && isProtected) {
+        const url = request.nextUrl.clone();
+        url.pathname = '/login';
+        return NextResponse.redirect(url);
+    }
+
+    if (user && isAuthRoute) {
+        const url = request.nextUrl.clone();
+        url.pathname = '/dashboard';
+        return NextResponse.redirect(url);
+    }
+
+    return response;
+}
+`
+    );
+
+    await writeFileSafe(
+        join(projectPath, 'src', `middleware.${ext}`),
+        `import { type NextRequest } from 'next/server';
+import { updateSession } from '@/lib/supabase/middleware';
+
+export async function middleware(request: NextRequest) {
+    return await updateSession(request);
+}
+
+export const config = {
+    matcher: [
+        // Excluir archivos estáticos e imágenes del middleware
+        '/((?!_next/static|_next/image|favicon.ico|.*\\\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    ],
+};
+`
+    );
+}
+
+/**
+ * SvelteKit + Supabase SSR.
+ * Genera cliente compartido + hooks.server.ts para cookies de sesión.
+ */
+async function injectSvelteKitSupabase(projectPath) {
+    mergeNodeDeps(projectPath, {
+        deps: {
+            '@supabase/ssr': '^0.5.0',
+            '@supabase/supabase-js': '^2.45.0',
+        },
+    });
+
+    await writeFileSafe(
+        join(projectPath, 'src', 'lib', 'supabase.ts'),
+        `import { createBrowserClient, createServerClient, isBrowser, type CookieOptions } from '@supabase/ssr';
+import type { Cookies } from '@sveltejs/kit';
+import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from '$env/static/public';
+
+type CookieToSet = { name: string; value: string; options: CookieOptions };
+
+export function createSupabaseClient(cookies?: Cookies) {
+    if (isBrowser()) {
+        return createBrowserClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY);
+    }
+
+    return createServerClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY, {
+        cookies: {
+            getAll: () => cookies?.getAll() ?? [],
+            setAll: (cookiesToSet: CookieToSet[]) => {
+                cookiesToSet.forEach(({ name, value, options }) => {
+                    cookies?.set(name, value, { ...options, path: '/' });
+                });
+            },
+        },
+    });
+}
+`
+    );
+
+    await writeFileSafe(
+        join(projectPath, 'src', 'hooks.server.ts'),
+        `import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { redirect, type Handle } from '@sveltejs/kit';
+import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from '$env/static/public';
+
+type CookieToSet = { name: string; value: string; options: CookieOptions };
+
+export const handle: Handle = async ({ event, resolve }) => {
+    event.locals.supabase = createServerClient(PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY, {
+        cookies: {
+            getAll: () => event.cookies.getAll(),
+            setAll: (cookiesToSet: CookieToSet[]) => {
+                cookiesToSet.forEach(({ name, value, options }) => {
+                    event.cookies.set(name, value, { ...options, path: '/' });
+                });
+            },
+        },
+    });
+
+    event.locals.getSession = async () => {
+        const {
+            data: { session },
+        } = await event.locals.supabase.auth.getSession();
+        return session;
+    };
+
+    // Protege /dashboard redirigiendo a /login si no hay sesión
+    if (event.url.pathname.startsWith('/dashboard')) {
+        const session = await event.locals.getSession();
+        if (!session) throw redirect(303, '/login');
+    }
+
+    return resolve(event, {
+        filterSerializedResponseHeaders: (name) => name === 'content-range',
+    });
+};
+`
+    );
+
+    await writeFileSafe(
+        join(projectPath, 'src', 'app.d.ts'),
+        `import type { SupabaseClient, Session } from '@supabase/supabase-js';
+
+declare global {
+    namespace App {
+        interface Locals {
+            supabase: SupabaseClient;
+            getSession: () => Promise<Session | null>;
+        }
+    }
+}
+
+export {};
+`
+    );
+}
+
+/**
+ * Nuxt 4 + Supabase usando @nuxtjs/supabase module.
+ * Configura el module en nuxt.config + composables auto-importables.
+ */
+async function injectNuxtSupabase(projectPath) {
+    mergeNodeDeps(projectPath, {
+        deps: {
+            '@nuxtjs/supabase': '^1.4.0',
+        },
+    });
+
+    // Nota: el usuario o el LLM debe agregar '@nuxtjs/supabase' a modules[] en
+    // nuxt.config.ts. Documentamos en el file generado.
+
+    await writeFileSafe(
+        join(projectPath, 'composables', 'useSupabase.ts'),
+        `/**
+ * Composable que expone el cliente Supabase con tipos.
+ *
+ * El módulo @nuxtjs/supabase provee useSupabaseClient() auto-importado.
+ * Este wrapper solo existe para centralizar tipos custom del proyecto.
+ *
+ * IMPORTANTE: agrega '@nuxtjs/supabase' a modules[] en nuxt.config.ts
+ * y las vars SUPABASE_URL / SUPABASE_KEY a tu .env.
+ */
+export function useSupabase() {
+    const client = useSupabaseClient();
+    const user = useSupabaseUser();
+    return { client, user };
+}
+`
+    );
+
+    await writeFileSafe(
+        join(projectPath, 'middleware', 'auth.ts'),
+        `export default defineNuxtRouteMiddleware((to) => {
+    const user = useSupabaseUser();
+
+    // Rutas bajo /dashboard requieren sesión
+    if (to.path.startsWith('/dashboard') && !user.value) {
+        return navigateTo('/login');
+    }
+
+    // Si ya hay sesión y va a /login, enviar al dashboard
+    if (to.path === '/login' && user.value) {
+        return navigateTo('/dashboard');
+    }
+});
+`
+    );
+}
+
+/**
+ * Merge deps en package.json sin duplicar ni pisar existentes.
+ */
+function mergeNodeDeps(projectPath, { deps = {}, devDeps = {} } = {}) {
+    const pkgPath = join(projectPath, 'package.json');
+    if (!existsSync(pkgPath)) return;
+
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+    pkg.dependencies = { ...(pkg.dependencies || {}), ...deps };
+    if (Object.keys(devDeps).length > 0) {
+        pkg.devDependencies = { ...(pkg.devDependencies || {}), ...devDeps };
+    }
+    writeFileSync(pkgPath, JSON.stringify(pkg, null, 4) + '\n');
+}
+
+function addNodeDeps(projectPath, database, language) {
+    const pkgPath = join(projectPath, 'package.json');
+    if (!existsSync(pkgPath)) return;
+
+    const deps = getNodeDeps(database, language);
+    if (Object.keys(deps.dependencies).length === 0 && Object.keys(deps.devDependencies).length === 0) return;
+
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+    pkg.dependencies = { ...(pkg.dependencies || {}), ...deps.dependencies };
+    if (Object.keys(deps.devDependencies).length > 0) {
+        pkg.devDependencies = { ...(pkg.devDependencies || {}), ...deps.devDependencies };
+    }
+    writeFileSync(pkgPath, JSON.stringify(pkg, null, 4) + '\n');
+}
+
+function getNodeDeps(database, language) {
+    const isTS = language === 'TypeScript';
+    const map = {
+        supabase: { deps: { '@supabase/supabase-js': '^2.45.0' }, devDeps: {} },
+        postgresql: {
+            deps: { pg: '^8.12.0' },
+            devDeps: isTS ? { '@types/pg': '^8.11.0' } : {},
+        },
+        firebase: { deps: { firebase: '^10.13.0' }, devDeps: {} },
+        mongodb: { deps: { mongoose: '^8.5.0' }, devDeps: {} },
+        turso: { deps: { '@libsql/client': '^0.10.0' }, devDeps: {} },
+        oracle: { deps: { oracledb: '^6.6.0' }, devDeps: {} },
+        insforge: { deps: { insforge: '^0.1.0' }, devDeps: {} },
+    };
+    const entry = map[database] || { deps: {}, devDeps: {} };
+    return { dependencies: entry.deps, devDependencies: entry.devDeps };
+}
+
+function addPythonDeps(projectPath, database) {
+    const reqPath = join(projectPath, 'requirements.txt');
+    if (!existsSync(reqPath)) return;
+
+    const deps = {
+        supabase: ['supabase>=2.7.0'],
+        postgresql: ['sqlalchemy[asyncio]>=2.0.0', 'asyncpg>=0.29.0'],
+        mongodb: ['motor>=3.5.0'],
+        oracle: ['oracledb>=2.2.0'],
+        firebase: ['firebase-admin>=6.5.0'],
+        turso: ['libsql-experimental>=0.0.41'],
+    };
+    const lines = deps[database] || [];
+    if (lines.length === 0) return;
+
+    const current = readFileSync(reqPath, 'utf8');
+    const newLines = lines.filter((l) => !current.includes(l.split(/[>=<]/)[0]));
+    if (newLines.length === 0) return;
+
+    writeFileSync(reqPath, current.trimEnd() + '\n' + newLines.join('\n') + '\n');
 }
 
 function getDbConfig(database, language) {

@@ -2,6 +2,8 @@
 
 Referencia de comandos para cada stack soportado por Grimox. Busca SOLO la sección del stack detectado.
 
+La columna **Docker output** indica qué directorio de build copia el Dockerfile al stage final (útil para verificar que el build produjo lo esperado). La columna **Docker start** es el comando que ejecuta el Dockerfile en producción.
+
 ---
 
 ## Web Fullstack Integrado
@@ -17,6 +19,9 @@ Referencia de comandos para cada stack soportado por Grimox. Busca SOLO la secci
 | Health | `/` |
 | Ready signal | `Ready on` o `✓ Ready` |
 | Verificar | `curl -s -o /dev/null -w "%{http_code}" http://localhost:3000` |
+| Docker strategy | node-ssr |
+| Docker output | `.next/standalone` (requiere `output: 'standalone'` en next.config) |
+| Docker start | `node server.js` |
 
 ### nuxt-4
 | Acción | Comando |
@@ -29,6 +34,9 @@ Referencia de comandos para cada stack soportado por Grimox. Busca SOLO la secci
 | Health | `/` |
 | Ready signal | `Nuxt ready` o `Local:` |
 | Verificar | `curl -s -o /dev/null -w "%{http_code}" http://localhost:3000` |
+| Docker strategy | node-ssr |
+| Docker output | `.output` (Nitro) |
+| Docker start | `node .output/server/index.mjs` |
 
 ### sveltekit
 | Acción | Comando |
@@ -41,6 +49,9 @@ Referencia de comandos para cada stack soportado por Grimox. Busca SOLO la secci
 | Health | `/` |
 | Ready signal | `Local:` |
 | Verificar | `curl -s -o /dev/null -w "%{http_code}" http://localhost:5173` |
+| Docker strategy | node-ssr |
+| Docker output | `build` (con adapter-node) |
+| Docker start | `node build` |
 
 ---
 
@@ -58,6 +69,9 @@ Referencia de comandos para cada stack soportado por Grimox. Busca SOLO la secci
 | Ready signal | `Local:` o `ready in` |
 | Preview | `npm run preview` (puerto 4173) |
 | Verificar | `curl -s -o /dev/null -w "%{http_code}" http://localhost:5173` |
+| Docker strategy | static-spa (nginx) |
+| Docker output | `dist` |
+| Docker start | `nginx -g 'daemon off;'` (puerto 80 en container) |
 
 ### vue-vite
 | Acción | Comando |
@@ -70,6 +84,9 @@ Referencia de comandos para cada stack soportado por Grimox. Busca SOLO la secci
 | Health | `/` |
 | Ready signal | `Local:` o `ready in` |
 | Verificar | `curl -s -o /dev/null -w "%{http_code}" http://localhost:5173` |
+| Docker strategy | static-spa (nginx) |
+| Docker output | `dist` |
+| Docker start | `nginx -g 'daemon off;'` |
 
 ### angular
 | Acción | Comando |
@@ -82,6 +99,9 @@ Referencia de comandos para cada stack soportado por Grimox. Busca SOLO la secci
 | Health | `/` |
 | Ready signal | `Compiled successfully` o `Angular Live` |
 | Verificar | `curl -s -o /dev/null -w "%{http_code}" http://localhost:4200` |
+| Docker strategy | static-spa (nginx) |
+| Docker output | `dist/*/browser` (Angular 17+ application builder) |
+| Docker start | `nginx -g 'daemon off;'` |
 
 ### svelte-vite
 | Acción | Comando |
@@ -94,6 +114,9 @@ Referencia de comandos para cada stack soportado por Grimox. Busca SOLO la secci
 | Health | `/` |
 | Ready signal | `Local:` |
 | Verificar | `curl -s -o /dev/null -w "%{http_code}" http://localhost:5173` |
+| Docker strategy | static-spa (nginx) |
+| Docker output | `dist` |
+| Docker start | `nginx -g 'daemon off;'` |
 
 ---
 
@@ -110,6 +133,9 @@ Referencia de comandos para cada stack soportado por Grimox. Busca SOLO la secci
 | Health | `/docs` (Swagger UI) |
 | Ready signal | `Uvicorn running on` |
 | Verificar | `curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/docs` |
+| Docker strategy | python-asgi |
+| Docker output | N/A (Python interpretado) |
+| Docker start | `uvicorn main:app --host 0.0.0.0 --port 8000` |
 
 ### nestjs
 | Acción | Comando |
@@ -122,6 +148,9 @@ Referencia de comandos para cada stack soportado por Grimox. Busca SOLO la secci
 | Health | `/` o `/api` |
 | Ready signal | `Nest application successfully started` |
 | Verificar | `curl -s -o /dev/null -w "%{http_code}" http://localhost:3000` |
+| Docker strategy | node-ssr |
+| Docker output | `dist` + `node_modules` + `package.json` |
+| Docker start | `node dist/main.js` |
 
 ### hono
 | Acción | Comando |
@@ -134,6 +163,9 @@ Referencia de comandos para cada stack soportado por Grimox. Busca SOLO la secci
 | Health | `/` |
 | Ready signal | `Listening on` o `Server running` |
 | Verificar | `curl -s -o /dev/null -w "%{http_code}" http://localhost:3000` |
+| Docker strategy | node-api |
+| Docker output | `dist` + `node_modules` |
+| Docker start | `node dist/index.js` |
 
 ### fastify
 | Acción | Comando |
@@ -146,6 +178,9 @@ Referencia de comandos para cada stack soportado por Grimox. Busca SOLO la secci
 | Health | `/` |
 | Ready signal | `Server listening` |
 | Verificar | `curl -s -o /dev/null -w "%{http_code}" http://localhost:3000` |
+| Docker strategy | node-api |
+| Docker output | `dist` + `node_modules` |
+| Docker start | `node dist/index.js` |
 
 ### springboot
 | Acción | Comando |
@@ -162,6 +197,22 @@ Referencia de comandos para cada stack soportado por Grimox. Busca SOLO la secci
 | Health | `/actuator/health` o `/swagger-ui` |
 | Ready signal | `Started` o `Tomcat started on port` |
 | Verificar | `curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/actuator/health` |
+| Docker strategy | jvm-jar |
+| Docker output | `target/*.jar` (Maven) o `build/libs/*.jar` (Gradle) |
+| Docker start | `java -jar app.jar` |
+
+### Stacks sin Docker (mobile / desktop nativo / IoT / CLI)
+
+Para estos stacks, Grimox **no genera Dockerfile** (skippea con mensaje):
+
+| Stack | Razón |
+|-------|-------|
+| expo, flutter, flet-mobile | Distribución via stores (App Store, Play Store) con EAS/flet build |
+| tauri, electron, flet-desktop | Binarios nativos por plataforma |
+| arduino, platformio, esp-idf, micropython | Firmware para hardware físico |
+| node-cli | Distribución via `npm publish` o pkg/nexe |
+
+Si el usuario pide Docker en un proyecto de estos, se muestra la razón y se continúa sin generar los archivos.
 
 ---
 

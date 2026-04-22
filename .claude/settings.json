@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Edit(/.claude/skills/grimox-dev/**)",
+      "Bash(rm -f grimox-qa-0.1.0.tgz)",
+      "Bash(npm pack *)"
+    ]
+  }
+}

@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { writeFileSafe, ensureDir } from '../utils/fs-helpers.js';
+import { hasUI } from '../injectors/mcp-config.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -61,6 +62,11 @@ ${config.database ? `- Base de datos: ${config.database}` : ''}
     // Reglas específicas del framework
     rules += getFrameworkRules(config);
 
+    // Flujo QA autónomo aplanado (para IDEs sin sub-agents: Cursor/Windsurf/Antigravity/Trae/Copilot)
+    if (hasUI(config)) {
+        rules += getQAFlowInline();
+    }
+
     // Reglas de Grimox
     rules += `
 ## Grimox CLI
@@ -89,6 +95,89 @@ Las skills están en \`.ai/skills/\` — ábrelas y úsalas como prompt en tu he
     const githubDir = join(projectPath, '.github');
     await ensureDir(githubDir);
     await writeFileSafe(join(githubDir, 'copilot-instructions.md'), rules);
+}
+
+/**
+ * Flujo QA autónomo aplanado — para IDEs sin sub-agents nativos
+ * (Cursor, Windsurf, Antigravity, Trae, Copilot).
+ *
+ * En Claude Code esto mismo lo hace el sub-agent grimox-qa via Task tool
+ * con roles separados. Aquí se "aplana": el mismo agente implementa y prueba.
+ * Pierde la separación QA/Dev pero mantiene el flujo autónomo con auto-fix.
+ */
+function getQAFlowInline() {
+    return `
+## Flujo de desarrollo autónomo con QA visual
+
+Cuando se te pida desarrollar features completas (o el usuario diga "desarrolla", "impleméntalo", "hazlo funcionar"), sigue este flujo por cada feature:
+
+### 1. Implementar
+
+Escribe el código de la feature siguiendo las reglas del stack. Verifica en cada archivo que compila.
+
+### 2. Build → Test → Fix
+
+Ejecuta build (\`npm run build\` o equivalente) y levanta el dev server en background. Espera el ready signal. Verifica con \`curl\` que responde 200. Fix cualquier error de build/runtime.
+
+### 3. QA visual (solo si hay UI)
+
+Los servidores MCP \`playwright\` y \`chrome-devtools\` están configurados en \`.mcp.json\`. Úsalos así:
+
+**Default: Playwright MCP** para 95% de los casos (flows, click, fill, asserts). Abre el browser con \`headless=false\` para que el usuario vea la actividad en pantalla.
+
+1. Navegar a la ruta recién implementada.
+2. Tomar accessibility snapshot.
+3. Ejecutar flows típicos (auth, CRUD, forms, navigation).
+4. Verificar: título, estructura, datos renderizados, errores de consola, network 4xx/5xx.
+
+**Escalation a Chrome DevTools MCP** solo si Playwright detecta uno de estos síntomas:
+- Stack de consola truncado o incompleto
+- HTTP 5xx o request colgado
+- Warning "Hydration mismatch" (Next.js/Nuxt)
+- TTI > 5s o layout shift alto
+
+Para casos simples (botón no existe, texto incorrecto): NO escales, Playwright basta.
+
+### 4. Auto-corrección con límite de 3 intentos
+
+Si el QA detecta un bug:
+
+\`\`\`
+Intento 1: usa la evidencia (console stack, network, snapshot) para diagnosticar
+           → fix mínimo → re-testear
+Intento 2: si persiste, amplía contexto (archivos relacionados, estado, .env)
+           → fix → re-testear
+Intento 3: último intento
+           → si tampoco converge: DETENTE y pregunta al usuario con el historial
+             completo de los 3 intentos. No sigas loopeando.
+\`\`\`
+
+Solo escala al usuario si realmente no converge. Para bugs normales, el flujo NO se detiene.
+
+### 5. Dev server persistente
+
+Mantén el dev server vivo durante todo el ciclo. Solo reiniciar si cambias config crítica (\`next.config\`, \`vite.config\`, \`package.json\`, \`.env\`). HMR se encarga del resto.
+
+### 6. Patterns por tipo de feature
+
+Para features comunes, usa estos patrones de testing:
+- **Auth**: verifica login, register, ruta protegida sin sesión.
+- **CRUD**: list (con seed), create, edit, delete (con confirmación).
+- **Form**: submit válido, validación de requeridos, validación de formato.
+- **Navigation**: cada link del menú, responsive mobile.
+
+### 7. Credenciales de prueba
+
+Si un flow requiere auth, busca credenciales en \`.env.test\` o \`.ai/test-credentials.md\`. Si no existen, créalas con seed user antes del primer test.
+
+### Reglas
+
+- **Browser visible** (no desactives \`headless=false\`). El usuario está viendo en vivo.
+- **Una feature a la vez** — testea apenas la completes, no al final.
+- **Screenshot solo en failure** — no spamear disco.
+- **Persiste hallazgos** en \`GRIMOX_DEV_PLAN.md\` sección "QA Findings" si existe.
+- **No navegar fuera de localhost** durante testing.
+`;
 }
 
 /**

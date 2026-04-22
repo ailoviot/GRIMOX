@@ -83,9 +83,42 @@ $ grimox create crm-lab
 | AI Skills | Universal skills for any LLM (dev, migrate, docs) |
 | MCP Config | Model Context Protocol server configuration |
 | UI/UX | Tailwind CSS v4 + component library + dark mode |
-| Database | Connection, ORM config, schemas, env vars |
+| Database | Connection, ORM config, schemas, env vars (with correct framework prefixes like `NEXT_PUBLIC_*` / `PUBLIC_*` / `VITE_*`) |
+| **Grimox Dev Studio** | Persistent browser daemon + visual QA pipeline (see below) |
 
 All features are enabled by default. Choose "Customize" at the confirmation step to toggle any off.
+
+## Grimox Dev Studio — visible browser during development (for web stacks)
+
+Projects with a UI get an integrated visual pipeline that shows **exactly one browser window** during all dev/build/QA activity, with live animated overlays showing what's happening in real time.
+
+**Key moments:**
+
+```bash
+npm install              # → postinstall spawns daemon + opens Chromium with
+                         #   Grimox Studio splash (animated gradient purple)
+npm run dev              # → daemon detects port → navigates browser to your app
+                         #   with persistent LIVE overlay + file-change toasts
+npm run build            # → prebuild kills dev server, next build compiles,
+                         #   postbuild auto-spawns production server on :3100
+                         #   and runs QA flows reusing the same browser.
+                         #   Exit 1 if QA fails → LLM can't report "working"
+```
+
+**Extra scripts for guaranteed clean state:**
+
+```bash
+npm run dev:fresh        # purge all Grimox daemons + zombies, then npm run dev
+npm run build:fresh      # purge all, then npm run build
+npm run daemon:purge     # just purge (no dev/build after)
+npm run daemon:status    # show daemon state (alive, CDP endpoint, browser)
+npm run daemon:stop      # gracefully stop the daemon
+npm run daemon:demo      # test the daemon/browser mechanism quickly
+```
+
+**Visual QA plan** in `.grimox/qa-plan.yml` — auto-discovers routes for smoke tests and lets you declare flows with steps like `click`, `fill`, `login: { as: demo }`, `assert: { text_visible / text_not_visible / element_visible / element_not_visible / url_contains / redirect_to }`.
+
+See [packages/grimox-qa/README.md](packages/grimox-qa/README.md) for complete documentation of the CLI, daemon commands, and pipeline internals.
 
 ## AI Integrations
 

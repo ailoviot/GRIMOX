@@ -301,10 +301,61 @@ Displays a visual tree with all available stacks, frameworks, and databases in t
 | Docker | `docker` | Dockerfile + docker-compose.yml | Enabled |
 | CI/CD | `cicd` | GitHub Actions (lint, test, build, deploy) | Enabled |
 | AI Skills | `ai-skills` | .ai/rules.md (universal) + .cursorrules + .github/copilot-instructions.md | Enabled |
-| MCP Config | `mcp` | MCP server configuration for AI agents | Enabled |
-| Security | `security` | .env validation + CSP + CORS + headers | Enabled |
+| AI Agents | `ai-agents` | `.claude/agents/grimox-qa.md` — optional QA inspection agent | Enabled |
+| MCP Config | `mcp` | MCP server configuration (DB only; browser MCPs intentionally excluded — see Grimox Dev Studio section) | Enabled |
+| **QA CLI** | `qa-cli` | **`grimox-qa` CLI + `grimox-daemon` in `.vendor/` tarball, `qa-plan.yml`, `dev:fresh`/`build:fresh` scripts, automated postbuild QA** | Enabled (web stacks only) |
+| Security | `security` | .env validation + CSP + CORS + headers (vars get correct framework prefix: `NEXT_PUBLIC_*` / `PUBLIC_*` / `VITE_*`) | Enabled |
 | UI/UX | `ui-styling` | Tailwind CSS v4 + component library + dark mode (web only) | Enabled |
-| Database Config | `database` | DB connection, ORM config, schemas, .env vars | Enabled |
+| Database Config | `database` | DB connection, ORM config, schemas, .env vars (with framework-correct prefixes for client-exposed vars) | Enabled |
+
+### Grimox Dev Studio (feature `qa-cli`)
+
+For web stacks (Next.js, Nuxt, SvelteKit, Vite-based SPAs, Astro, docs sites, Electron/Tauri), this feature installs a **persistent browser daemon + deterministic visual QA pipeline**:
+
+**Components installed:**
+- `grimox-qa` CLI (bundled as `.vendor/grimox-qa.tgz`, resolved via `file:.vendor/...` to avoid npm registry)
+- `grimox-daemon` — background process managing a persistent Chromium browser with Grimox Studio overlays
+- `.grimox/qa-plan.yml` — QA flow configuration
+- `.grimox/config.yml`, `.grimox/.gitignore`, `.grimox/README.md`
+
+**Scripts injected into `package.json`:**
+
+| Script | Purpose |
+|---|---|
+| `dev` | Framework's native dev (`next dev`, `vite`, etc.) — unchanged |
+| `build` | Framework's native build — unchanged |
+| `postinstall` | `grimox-banner && grimox-daemon spawn-detached` — shows welcome banner and spawns daemon after `npm install` |
+| `predev` | `grimox-daemon spawn-detached \|\| true` — ensures daemon is alive before `npm run dev` |
+| `prebuild` | `grimox-daemon kill-dev && grimox-daemon spawn-detached \|\| true` — frees port 3000 (resolves Windows `EPERM` on `.next/trace`) + ensures daemon alive before build |
+| `postbuild` | `grimox-qa --dynamic --auto-server` — automated QA against production server temporarily launched on port 3100 |
+| `qa` | `grimox-qa --dynamic` — manual QA run reusing the daemon |
+| `daemon:status` | `grimox-daemon status` — show daemon state (alive, CDP endpoint, browser info) |
+| `daemon:stop` | `grimox-daemon stop` — gracefully stop daemon |
+| `daemon:demo` | `grimox-daemon demo` — quick test of the daemon+browser mechanism |
+| `daemon:purge` | `grimox-daemon purge-all` — kill ALL Grimox daemons + Playwright chromiums + `next start/dev` zombies |
+| `dev:fresh` | `grimox-daemon purge-all && npm run dev` — guaranteed clean state before dev |
+| `build:fresh` | `grimox-daemon purge-all && npm run build` — guaranteed clean state before build |
+
+**Daemon CLI commands (also available standalone via `npx grimox-daemon <cmd>`):**
+
+| Command | Behavior |
+|---|---|
+| `start --standby` | Foreground start with browser showing Grimox Studio splash from second 0 |
+| `spawn-detached` | Background spawn. Idempotent: preserves existing daemon if alive with working browser; respawns if browser died; also auto-purges foreign daemons (other projects) and `next start/dev` zombies from the system |
+| `stop` | Graceful shutdown via IPC |
+| `status` | JSON report (`alive`, `baseUrl`, `cdp` with `port` and `endpoint`, `takenOver`) |
+| `kill-dev` | Kill processes listening on common dev ports (3000, 3001, 3100, 4200, 5173, 4321, 8080) |
+| `demo` | Kill previous daemon + start in standby mode for quick verification |
+| `purge-all` | System-wide kill of all Grimox daemons, Playwright chromiums (root, not `--type=*` workers), and `next start/dev` zombies |
+
+**Why `grimox-qa --dynamic --auto-server` matters:**
+
+- `--dynamic` — connects via CDP (HTTP endpoint) to the daemon's browser and reuses its page for smoke tests and flows. Result: one browser visible during the entire dev→build→QA cycle, not multiple windows opening/closing.
+- `--auto-server` — if `baseUrl` doesn't respond (typical after `prebuild` kills the dev server to free `.next/`), automatically spawns a production server on port 3100 (`npx next start -p 3100` for Next.js, `nuxt preview` for Nuxt, `node build/index.js` for SvelteKit, etc.), runs QA against it, and kills it on exit.
+
+**Supported assert types in `qa-plan.yml`:**
+
+`text_visible`, `text_not_visible`, `element_visible`, `element_not_visible`, `url_contains`, `redirect_to`, `status`, `no_console_errors`. Step types: `goto`, `click`, `fill`, `login` (macro), `wait`.
 
 ### Automatically Generated AI Integrations
 
@@ -1070,6 +1121,43 @@ grimox create my-app --yes
 ---
 
 ## Changelog
+
+### 2026-04-22 — Grimox Dev Studio: persistent browser daemon + deterministic QA pipeline
+
+Major overhaul of the visual testing layer. Replaces the previous "LLM-invokes-agent" model with a deterministic npm-pipeline model: the LLM can't skip QA because npm runs it automatically.
+
+**New package: `grimox-qa`** (bundled as `.vendor/grimox-qa.tgz` in each scaffolded project)
+- `grimox-qa` CLI with flags: `--dynamic` (reuse daemon browser via CDP), `--auto-server` (spawn temporary production server for QA), `--headed/--headless` (auto-detected), `--animations=full|minimal|off`, `--plan`, `--url`, `--retries`, `--reset`
+- `grimox-daemon` — background process managing a persistent Chromium browser with Grimox Studio overlays. Commands: `start --standby`, `spawn-detached`, `stop`, `status`, `kill-dev`, `demo`, `purge-all`
+- Assert types supported: `text_visible`, `text_not_visible`, `element_visible`, `element_not_visible`, `url_contains`, `redirect_to`, `status`, `no_console_errors`
+
+**Feature `qa-cli`** (auto-enabled for web stacks) injects into `package.json`:
+- Hooks: `postinstall`, `predev`, `prebuild`, `postbuild` — the whole pipeline is automated
+- Scripts for daily use: `qa`, `daemon:status`, `daemon:stop`, `daemon:demo`
+- Scripts for clean state guarantee: `daemon:purge`, `dev:fresh`, `build:fresh`
+
+**UX guarantees achieved:**
+- Single Chromium window visible during entire dev→build→QA cycle (no more "ráfaga" of tabs opening/closing)
+- Grimox Studio overlays (LIVE banner, file-change toasts, progress bar) persistent across client-side navigation
+- Browser opens with animated splash from second 0 (standby mode) — no more blank `about:blank`
+- Auto-purge of foreign daemons and zombie `next start/dev` processes on every `spawn-detached`
+
+**Windows-specific fixes:**
+- `prebuild` kills dev server holding `.next/trace` before `next build` (resolves `EPERM` error)
+- `auto-server` spawns production server on separate port (3100) so build + QA can coexist
+
+**Supabase SSR correctness:**
+- `.env.example` vars use correct framework prefix (`NEXT_PUBLIC_*` for Next.js, `PUBLIC_*` for SvelteKit, `VITE_*` for Vite-based, `NUXT_PUBLIC_*` for Nuxt)
+- `.mcp.json` substitutes the same prefixed variable for the Supabase MCP server
+
+**SKILL updates:**
+- REGLA #4 added: "never use Playwright MCP / Chrome DevTools MCP — they spawn parasite browsers; trust the daemon + postbuild pipeline"
+- Phase 4 (QA plan): 5 matrix presets depending on project type — A (CRUD with auth), B (landing/marketing), C (docs site), D (SPA consuming API), E (read-only dashboard)
+- Coverage rules: if you implemented a "Delete" button, your qa-plan must have a flow that clicks it and asserts `text_not_visible`
+
+**Browser MCPs removed from injector:** `@playwright/mcp` and `chrome-devtools-mcp` no longer scaffold into `.mcp.json`. They spawned additional Chromium windows without overlays, contradicting the "one browser visible" goal. The daemon + `grimox-qa --dynamic` cover all the capabilities.
+
+**Undici fix (Node 21):** replaced `AbortSignal.timeout(X)` with manual `AbortController` + explicit body consumption in `pingServer` and `probePort`, resolving `ERR_INVALID_STATE: Controller is already closed` intermittent crashes during `npm run build`.
 
 ### 2026-03-21 — Autonomous visual testing with agent-browser in grimox-dev
 - Skill `grimox-dev` updated to 6 phases: new Phase 4.5 for visual browser testing

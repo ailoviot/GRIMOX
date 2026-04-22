@@ -20,6 +20,18 @@ export const stacks = {
                 compatibleDatabases: ['supabase', 'postgresql', 'firebase', 'mongodb', 'turso', 'insforge', 'redis'],
                 tags: ['react', 'ssr', 'fullstack'],
                 notes: 'App Router, Server Actions',
+                docker: {
+                    strategy: 'node-ssr',
+                    port: 3000,
+                    buildCmd: 'npm run build',
+                    startCmd: 'node server.js',
+                    copies: [
+                        '.next/standalone:.',
+                        '.next/static:.next/static',
+                        'public:public',
+                    ],
+                    healthPath: '/',
+                },
             },
             {
                 id: 'nuxt-4',
@@ -31,6 +43,16 @@ export const stacks = {
                 compatibleDatabases: ['supabase', 'postgresql', 'firebase', 'mongodb', 'turso', 'insforge'],
                 tags: ['vue', 'ssr', 'fullstack'],
                 notes: 'Auto-imports, Nitro server routes',
+                docker: {
+                    strategy: 'node-ssr',
+                    port: 3000,
+                    buildCmd: 'npm run build',
+                    startCmd: 'node .output/server/index.mjs',
+                    copies: [
+                        '.output:.output',
+                    ],
+                    healthPath: '/',
+                },
             },
             {
                 id: 'sveltekit',
@@ -42,6 +64,18 @@ export const stacks = {
                 compatibleDatabases: ['supabase', 'postgresql', 'firebase', 'mongodb', 'turso', 'insforge'],
                 tags: ['svelte', 'ssr', 'fullstack'],
                 notes: 'Server endpoints, form actions',
+                docker: {
+                    strategy: 'node-ssr',
+                    port: 3000,
+                    buildCmd: 'npm run build',
+                    startCmd: 'node build',
+                    copies: [
+                        'build:build',
+                        'package.json:package.json',
+                        'node_modules:node_modules',
+                    ],
+                    healthPath: '/',
+                },
             },
         ],
     },
@@ -66,6 +100,13 @@ export const stacks = {
                 description: 'SPA con React 19 + Vite',
                 compatibleDatabases: ['supabase', 'firebase', 'insforge'],
                 tags: ['react', 'spa', 'vite'],
+                docker: {
+                    strategy: 'static-spa',
+                    port: 80,
+                    buildCmd: 'npm run build',
+                    outputDir: 'dist',
+                    healthPath: '/',
+                },
             },
             {
                 id: 'vue-vite',
@@ -76,6 +117,13 @@ export const stacks = {
                 description: 'SPA con Vue 3 + Vite',
                 compatibleDatabases: ['supabase', 'firebase', 'insforge'],
                 tags: ['vue', 'spa', 'vite'],
+                docker: {
+                    strategy: 'static-spa',
+                    port: 80,
+                    buildCmd: 'npm run build',
+                    outputDir: 'dist',
+                    healthPath: '/',
+                },
             },
             {
                 id: 'angular',
@@ -87,6 +135,13 @@ export const stacks = {
                 compatibleDatabases: ['supabase', 'firebase', 'insforge'],
                 tags: ['angular', 'spa'],
                 notes: 'TypeScript obligatorio, standalone components, Guards',
+                docker: {
+                    strategy: 'static-spa',
+                    port: 80,
+                    buildCmd: 'npm run build',
+                    outputDir: 'dist/*/browser',
+                    healthPath: '/',
+                },
             },
             {
                 id: 'svelte-vite',
@@ -97,6 +152,13 @@ export const stacks = {
                 description: 'SPA con Svelte 5 + Vite',
                 compatibleDatabases: ['supabase', 'firebase', 'insforge'],
                 tags: ['svelte', 'spa', 'vite'],
+                docker: {
+                    strategy: 'static-spa',
+                    port: 80,
+                    buildCmd: 'npm run build',
+                    outputDir: 'dist',
+                    healthPath: '/',
+                },
             },
         ],
     },
@@ -115,6 +177,12 @@ export const stacks = {
                 compatibleDatabases: ['supabase', 'postgresql', 'firebase', 'mongodb', 'oracle', 'turso', 'insforge', 'redis'],
                 tags: ['python', 'api', 'async'],
                 notes: 'Pydantic v2, uvicorn, auto-docs Swagger/ReDoc',
+                docker: {
+                    strategy: 'python-asgi',
+                    port: 8000,
+                    startCmd: 'uvicorn main:app --host 0.0.0.0 --port 8000',
+                    healthPath: '/docs',
+                },
             },
             {
                 id: 'nestjs',
@@ -125,6 +193,18 @@ export const stacks = {
                 description: 'Enterprise API framework para Node.js',
                 compatibleDatabases: ['supabase', 'postgresql', 'firebase', 'mongodb', 'oracle', 'turso', 'insforge', 'redis'],
                 tags: ['typescript', 'api', 'enterprise'],
+                docker: {
+                    strategy: 'node-ssr',
+                    port: 3000,
+                    buildCmd: 'npm run build',
+                    startCmd: 'node dist/main.js',
+                    copies: [
+                        'dist:dist',
+                        'package.json:package.json',
+                        'node_modules:node_modules',
+                    ],
+                    healthPath: '/',
+                },
             },
             {
                 id: 'hono',
@@ -135,6 +215,18 @@ export const stacks = {
                 description: 'Ultra-fast, multi-runtime API',
                 compatibleDatabases: ['supabase', 'postgresql', 'mongodb', 'turso', 'insforge', 'redis'],
                 tags: ['typescript', 'api', 'edge'],
+                docker: {
+                    strategy: 'node-api',
+                    port: 3000,
+                    buildCmd: 'npm run build',
+                    startCmd: 'node dist/index.js',
+                    copies: [
+                        'dist:dist',
+                        'package.json:package.json',
+                        'node_modules:node_modules',
+                    ],
+                    healthPath: '/',
+                },
             },
             {
                 id: 'fastify',
@@ -145,6 +237,18 @@ export const stacks = {
                 description: 'High performance Node.js API',
                 compatibleDatabases: ['supabase', 'postgresql', 'mongodb', 'turso', 'insforge', 'redis'],
                 tags: ['node', 'api', 'performance'],
+                docker: {
+                    strategy: 'node-api',
+                    port: 3000,
+                    buildCmd: 'npm run build',
+                    startCmd: 'node dist/index.js',
+                    copies: [
+                        'dist:dist',
+                        'package.json:package.json',
+                        'node_modules:node_modules',
+                    ],
+                    healthPath: '/',
+                },
             },
             {
                 id: 'springboot',
@@ -157,6 +261,11 @@ export const stacks = {
                 tags: ['java', 'kotlin', 'api', 'enterprise'],
                 languageOptions: ['Java', 'Kotlin'],
                 notes: 'Maven/Gradle, Spring Security, JPA + Hibernate',
+                docker: {
+                    strategy: 'jvm-jar',
+                    port: 8080,
+                    healthPath: '/actuator/health',
+                },
             },
         ],
     },
@@ -175,6 +284,7 @@ export const stacks = {
                 compatibleDatabases: ['supabase', 'firebase', 'insforge'],
                 tags: ['react-native', 'expo', 'mobile'],
                 notes: 'Expo Router, EAS Build',
+                docker: { strategy: 'none', reason: 'Apps mobile se distribuyen vía stores (App Store, Play Store) con EAS Build, no vía contenedores.' },
             },
             {
                 id: 'flutter',
@@ -186,6 +296,7 @@ export const stacks = {
                 compatibleDatabases: ['supabase', 'firebase', 'insforge'],
                 tags: ['flutter', 'dart', 'mobile'],
                 notes: 'Riverpod, Material 3',
+                docker: { strategy: 'none', reason: 'Apps Flutter se distribuyen vía stores o como binarios. No aplica Docker.' },
             },
             {
                 id: 'flet-mobile',
@@ -196,6 +307,7 @@ export const stacks = {
                 description: 'Apps móviles desde Python',
                 compatibleDatabases: ['supabase', 'firebase', 'insforge'],
                 tags: ['python', 'flet', 'mobile'],
+                docker: { strategy: 'none', reason: 'Flet mobile empaqueta con flet build apk/ipa, no con Docker.' },
             },
         ],
     },
@@ -213,6 +325,7 @@ export const stacks = {
                 description: 'Apps ligeras con web UI + Rust',
                 compatibleDatabases: ['supabase', 'turso', 'insforge'],
                 tags: ['tauri', 'rust', 'desktop'],
+                docker: { strategy: 'none', reason: 'Tauri produce binarios nativos por plataforma (.exe, .app, .AppImage). No aplica Docker.' },
             },
             {
                 id: 'electron',
@@ -223,6 +336,7 @@ export const stacks = {
                 description: 'Cross-platform desktop con Node.js',
                 compatibleDatabases: ['supabase', 'turso', 'insforge'],
                 tags: ['electron', 'desktop'],
+                docker: { strategy: 'none', reason: 'Electron produce binarios nativos con electron-builder. No aplica Docker.' },
             },
             {
                 id: 'flet-desktop',
@@ -233,6 +347,7 @@ export const stacks = {
                 description: 'Apps desktop desde Python',
                 compatibleDatabases: ['supabase', 'postgresql', 'insforge'],
                 tags: ['python', 'flet', 'desktop'],
+                docker: { strategy: 'none', reason: 'Flet desktop empaqueta con flet build windows/macos/linux, no con Docker.' },
             },
         ],
     },
@@ -251,6 +366,7 @@ export const stacks = {
                 compatibleDatabases: [],
                 tags: ['arduino', 'iot', 'cpp'],
                 boardOptions: ['ESP32', 'Arduino Uno', 'Arduino Mega', 'ESP8266'],
+                docker: { strategy: 'none', reason: 'Firmware Arduino se flashea a hardware físico. No aplica Docker.' },
             },
             {
                 id: 'platformio',
@@ -262,6 +378,7 @@ export const stacks = {
                 compatibleDatabases: [],
                 tags: ['platformio', 'iot', 'cpp'],
                 boardOptions: ['ESP32 (esp32dev)', 'ESP8266 (nodemcuv2)', 'Arduino Uno (uno)'],
+                docker: { strategy: 'none', reason: 'Firmware PlatformIO se flashea a microcontroladores. No aplica Docker.' },
             },
             {
                 id: 'esp-idf',
@@ -272,6 +389,7 @@ export const stacks = {
                 description: 'Framework nativo Espressif',
                 compatibleDatabases: [],
                 tags: ['esp-idf', 'iot', 'c'],
+                docker: { strategy: 'none', reason: 'Firmware ESP-IDF se flashea con idf.py flash. No aplica Docker.' },
             },
             {
                 id: 'micropython',
@@ -283,6 +401,7 @@ export const stacks = {
                 compatibleDatabases: [],
                 tags: ['micropython', 'iot', 'python'],
                 boardOptions: ['ESP32', 'Raspberry Pi Pico', 'ESP8266'],
+                docker: { strategy: 'none', reason: 'MicroPython se sube a microcontroladores con mpremote. No aplica Docker.' },
             },
         ],
     },
@@ -301,6 +420,12 @@ export const stacks = {
                 compatibleDatabases: ['supabase', 'postgresql', 'mongodb', 'insforge'],
                 tags: ['python', 'ml', 'data'],
                 notes: 'scikit-learn, pandas, numpy, Jupyter notebooks',
+                docker: {
+                    strategy: 'python-asgi',
+                    port: 8000,
+                    startCmd: 'uvicorn main:app --host 0.0.0.0 --port 8000',
+                    healthPath: '/docs',
+                },
             },
         ],
     },
@@ -318,6 +443,13 @@ export const stacks = {
                 description: 'Documentación rápida con Astro',
                 compatibleDatabases: [],
                 tags: ['astro', 'docs', 'static'],
+                docker: {
+                    strategy: 'static-spa',
+                    port: 80,
+                    buildCmd: 'npm run build',
+                    outputDir: 'dist',
+                    healthPath: '/',
+                },
             },
             {
                 id: 'docusaurus',
@@ -328,6 +460,13 @@ export const stacks = {
                 description: 'Documentación React-based (Meta)',
                 compatibleDatabases: [],
                 tags: ['docusaurus', 'docs', 'react'],
+                docker: {
+                    strategy: 'static-spa',
+                    port: 80,
+                    buildCmd: 'npm run build',
+                    outputDir: 'build',
+                    healthPath: '/',
+                },
             },
             {
                 id: 'vitepress',
@@ -338,6 +477,13 @@ export const stacks = {
                 description: 'Documentación Vue-based',
                 compatibleDatabases: [],
                 tags: ['vitepress', 'docs', 'vue'],
+                docker: {
+                    strategy: 'static-spa',
+                    port: 80,
+                    buildCmd: 'npm run docs:build',
+                    outputDir: '.vitepress/dist',
+                    healthPath: '/',
+                },
             },
         ],
     },
@@ -355,6 +501,7 @@ export const stacks = {
                 description: 'CLI tool scaffold con Commander.js',
                 compatibleDatabases: [],
                 tags: ['node', 'cli'],
+                docker: { strategy: 'none', reason: 'CLI tools se distribuyen vía npm publish o binarios (pkg/nexe). No aplica Docker.' },
             },
         ],
     },

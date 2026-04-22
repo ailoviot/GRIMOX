@@ -1,116 +1,218 @@
 import { join } from 'node:path';
 import { writeFileSafe } from '../utils/fs-helpers.js';
+import { findStackById } from '../registry/stacks.js';
+import { buildDockerArtifacts } from './docker-strategies.js';
+import { logger } from '../utils/logger.js';
 
 /**
- * Inyecta Dockerfile y docker-compose.yml
+ * Inyecta Dockerfile + docker-compose.yml + .dockerignore + nginx.conf (si aplica).
+ *
+ * Despacha a la strategy declarada en stacks.js → docker.strategy:
+ *   - node-ssr, node-api, static-spa, python-asgi, jvm-jar → genera artefactos
+ *   - none → skip con mensaje educativo (mobile/IoT/CLI/desktop nativo)
  */
 export async function inject(projectPath, config) {
-    const stackId = config.isDecoupled ? null : config.stackId;
-    const language = config.isDecoupled ? null : config.language;
-
     if (config.isDecoupled) {
         await injectDecoupled(projectPath, config);
         return;
     }
 
-    const dockerfile = getDockerfile(stackId, language);
-    const compose = getDockerCompose(stackId, config.database, config.projectName);
+    const stackId = config.stackId;
+    const entry = findStackById(stackId);
+    if (!entry) {
+        logger.warn(`Docker: stack "${stackId}" no encontrado en registry. Skip.`);
+        return;
+    }
 
-    await writeFileSafe(join(projectPath, 'Dockerfile'), dockerfile);
+    const profile = entry.docker;
+    if (!profile || profile.strategy === 'none') {
+        const reason = profile?.reason || 'este stack no soporta Docker.';
+        logger.info(`Docker skipped para ${entry.name}: ${reason}`);
+        return;
+    }
+
+    const artifacts = buildDockerArtifacts(profile);
+    if (!artifacts) return;
+
+    await writeFileSafe(join(projectPath, 'Dockerfile'), artifacts.dockerfile);
+    for (const extra of artifacts.extraFiles || []) {
+        await writeFileSafe(join(projectPath, extra.path), extra.content);
+    }
+
+    const compose = buildComposeIntegrated({
+        port: profile.port,
+        database: config.database,
+        projectName: config.projectName,
+    });
     await writeFileSafe(join(projectPath, 'docker-compose.yml'), compose);
 }
 
 async function injectDecoupled(projectPath, config) {
-    const { frontend, backend, database, projectName } = config;
+    const { frontend, backend, database } = config;
 
-    // Dockerfile frontend
-    const frontendDockerfile = getDockerfile(frontend.stackId, frontend.language);
-    await writeFileSafe(join(projectPath, 'Dockerfile.frontend'), frontendDockerfile);
+    const frontendEntry = findStackById(frontend.stackId);
+    const backendEntry = findStackById(backend.stackId);
 
-    // Dockerfile backend
-    const backendDockerfile = getDockerfile(backend.stackId, backend.language);
-    await writeFileSafe(join(projectPath, 'Dockerfile.backend'), backendDockerfile);
+    const frontendProfile = frontendEntry?.docker;
+    const backendProfile = backendEntry?.docker;
 
-    // docker-compose con ambos servicios
-    let compose = `version: '3.8'\n\nservices:\n`;
-    compose += `  frontend:\n    build:\n      context: ./frontend\n      dockerfile: ../Dockerfile.frontend\n    ports:\n      - "3000:3000"\n    depends_on:\n      - backend\n\n`;
-    compose += `  backend:\n    build:\n      context: ./backend\n      dockerfile: ../Dockerfile.backend\n    ports:\n      - "8080:8080"\n    env_file:\n      - .env\n\n`;
+    const frontendOk = frontendProfile && frontendProfile.strategy !== 'none';
+    const backendOk = backendProfile && backendProfile.strategy !== 'none';
 
-    if (database) {
-        compose += getDbService(database);
+    if (!frontendOk && !backendOk) {
+        logger.info('Docker skipped: ni frontend ni backend soportan Docker.');
+        return;
     }
 
+    if (frontendOk) {
+        const artifacts = buildDockerArtifacts(frontendProfile);
+        await writeFileSafe(join(projectPath, 'frontend', 'Dockerfile'), artifacts.dockerfile);
+        for (const extra of artifacts.extraFiles || []) {
+            await writeFileSafe(join(projectPath, 'frontend', extra.path), extra.content);
+        }
+    } else {
+        logger.info(`Docker frontend skipped: ${frontendProfile?.reason || 'no aplica'}.`);
+    }
+
+    if (backendOk) {
+        const artifacts = buildDockerArtifacts(backendProfile);
+        await writeFileSafe(join(projectPath, 'backend', 'Dockerfile'), artifacts.dockerfile);
+        for (const extra of artifacts.extraFiles || []) {
+            await writeFileSafe(join(projectPath, 'backend', extra.path), extra.content);
+        }
+    } else {
+        logger.info(`Docker backend skipped: ${backendProfile?.reason || 'no aplica'}.`);
+    }
+
+    const compose = buildComposeDecoupled({
+        frontendPort: frontendProfile?.port || 80,
+        backendPort: backendProfile?.port || 8080,
+        frontendEnabled: frontendOk,
+        backendEnabled: backendOk,
+        database,
+    });
     await writeFileSafe(join(projectPath, 'docker-compose.yml'), compose);
 }
 
-function getDockerfile(stackId, language) {
-    if (['fastapi', 'fastapi-ml', 'flet-mobile', 'flet-desktop'].includes(stackId) || language === 'Python') {
-        return `FROM python:3.12-slim
-
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
-
-EXPOSE 8000
-
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-`;
-    }
-
-    if (stackId === 'springboot') {
-        return `FROM eclipse-temurin:21-jdk-alpine AS build
-WORKDIR /app
-COPY . .
-RUN ./gradlew build -x test
-
-FROM eclipse-temurin:21-jre-alpine
-WORKDIR /app
-COPY --from=build /app/build/libs/*.jar app.jar
-EXPOSE 8080
-CMD ["java", "-jar", "app.jar"]
-`;
-    }
-
-    // Default Node.js (multi-stage con nginx para frontend)
-    return `FROM node:22-alpine AS build
-WORKDIR /app
-COPY package*.json .
-RUN npm ci
-COPY . .
-RUN npm run build
-
-FROM nginx:alpine
-COPY --from=build /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
-`;
-}
-
-function getDockerCompose(stackId, database, projectName) {
-    let compose = `version: '3.8'\n\nservices:\n`;
-    compose += `  app:\n    build: .\n    ports:\n      - "3000:3000"\n    env_file:\n      - .env\n\n`;
+function buildComposeIntegrated({ port, database }) {
+    let compose = `services:\n`;
+    compose += `  app:\n`;
+    compose += `    build: .\n`;
+    compose += `    ports:\n`;
+    compose += `      - "${port}:${port}"\n`;
+    compose += `    env_file:\n`;
+    compose += `      - .env\n`;
 
     if (database) {
-        compose += getDbService(database);
+        const depends = requiresLocalService(database);
+        if (depends) {
+            compose += `    depends_on:\n`;
+            compose += `      - ${depends}\n`;
+        }
     }
 
+    compose += `\n`;
+    compose += getDbService(database);
     return compose;
+}
+
+function buildComposeDecoupled({ frontendPort, backendPort, frontendEnabled, backendEnabled, database }) {
+    let compose = `services:\n`;
+
+    if (backendEnabled) {
+        compose += `  backend:\n`;
+        compose += `    build:\n`;
+        compose += `      context: ./backend\n`;
+        compose += `    ports:\n`;
+        compose += `      - "${backendPort}:${backendPort}"\n`;
+        compose += `    env_file:\n`;
+        compose += `      - .env\n`;
+        const depends = requiresLocalService(database);
+        if (depends) {
+            compose += `    depends_on:\n`;
+            compose += `      - ${depends}\n`;
+        }
+        compose += `\n`;
+    }
+
+    if (frontendEnabled) {
+        compose += `  frontend:\n`;
+        compose += `    build:\n`;
+        compose += `      context: ./frontend\n`;
+        compose += `    ports:\n`;
+        compose += `      - "${frontendPort}:${frontendPort}"\n`;
+        if (backendEnabled) {
+            compose += `    environment:\n`;
+            compose += `      # URL pública para el browser del usuario\n`;
+            compose += `      - VITE_API_URL=http://localhost:${backendPort}\n`;
+            compose += `      - NEXT_PUBLIC_API_URL=http://localhost:${backendPort}\n`;
+            compose += `    depends_on:\n`;
+            compose += `      - backend\n`;
+        }
+        compose += `\n`;
+    }
+
+    compose += getDbService(database);
+    return compose;
+}
+
+function requiresLocalService(database) {
+    switch (database) {
+        case 'postgresql': return 'postgres';
+        case 'mongodb': return 'mongo';
+        case 'redis': return 'redis';
+        case 'oracle': return 'oracle';
+        default: return null; // supabase/firebase/turso/insforge son cloud
+    }
 }
 
 function getDbService(database) {
     switch (database) {
         case 'postgresql':
-            return `  postgres:\n    image: postgres:16-alpine\n    ports:\n      - "5432:5432"\n    environment:\n      POSTGRES_DB: app\n      POSTGRES_USER: postgres\n      POSTGRES_PASSWORD: postgres\n    volumes:\n      - pgdata:/var/lib/postgresql/data\n\nvolumes:\n  pgdata:\n`;
+            return `  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
+`;
         case 'mongodb':
-            return `  mongo:\n    image: mongo:7\n    ports:\n      - "27017:27017"\n    volumes:\n      - mongodata:/data/db\n\nvolumes:\n  mongodata:\n`;
+            return `  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodata:/data/db
+
+volumes:
+  mongodata:
+`;
         case 'redis':
-            return `  redis:\n    image: redis:7-alpine\n    ports:\n      - "6379:6379"\n`;
+            return `  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+`;
         case 'oracle':
-            return `  oracle:\n    image: gvenzl/oracle-xe:21-slim\n    ports:\n      - "1521:1521"\n    environment:\n      ORACLE_PASSWORD: oracle\n    volumes:\n      - oradata:/opt/oracle/oradata\n\nvolumes:\n  oradata:\n`;
+            return `  oracle:
+    image: gvenzl/oracle-xe:21-slim
+    ports:
+      - "1521:1521"
+    environment:
+      ORACLE_PASSWORD: oracle
+    volumes:
+      - oradata:/opt/oracle/oradata
+
+volumes:
+  oradata:
+`;
         default:
             return '';
     }

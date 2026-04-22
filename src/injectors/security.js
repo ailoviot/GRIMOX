@@ -23,14 +23,21 @@ function getEnvExample(config) {
     content += `NODE_ENV=development\n`;
     content += `PORT=3000\n\n`;
 
+    // Prefijo de vars cliente según framework
+    // Next.js: NEXT_PUBLIC_, Nuxt: NUXT_PUBLIC_, SvelteKit: PUBLIC_, Vite: VITE_
+    const stackId = config.isDecoupled ? config.frontend?.stackId : config.stackId;
+    const clientPrefix = getClientEnvPrefix(stackId);
+
     // Database vars
     if (config.database) {
         content += `# Database\n`;
         switch (config.database) {
             case 'supabase':
-                content += `SUPABASE_URL=https://your-project.supabase.co\n`;
-                content += `SUPABASE_ANON_KEY=your-anon-key\n`;
-                content += `SUPABASE_SERVICE_ROLE_KEY=your-service-role-key\n`;
+                // URL y ANON_KEY deben exponerse al cliente (requeridos por el browser client)
+                // SERVICE_ROLE_KEY SOLO en servidor — sin prefijo de cliente
+                content += `${clientPrefix}SUPABASE_URL=https://your-project.supabase.co\n`;
+                content += `${clientPrefix}SUPABASE_ANON_KEY=your-anon-key\n`;
+                content += `SUPABASE_SERVICE_ROLE_KEY=your-service-role-key  # servidor únicamente\n`;
                 break;
             case 'postgresql':
                 content += `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/app\n`;
@@ -68,4 +75,17 @@ function getEnvExample(config) {
     content += `JWT_SECRET=change-this-to-a-secure-random-string\n\n`;
 
     return content;
+}
+
+/**
+ * Devuelve el prefijo de var de entorno cliente-exposable según el framework.
+ * Supabase necesita URL + ANON_KEY en el browser (createBrowserClient),
+ * así que esas vars requieren el prefijo del framework.
+ */
+function getClientEnvPrefix(stackId) {
+    if (['nextjs-15'].includes(stackId)) return 'NEXT_PUBLIC_';
+    if (['nuxt-4'].includes(stackId)) return 'NUXT_PUBLIC_';
+    if (['sveltekit'].includes(stackId)) return 'PUBLIC_';
+    if (['react-vite', 'vue-vite', 'svelte-vite'].includes(stackId)) return 'VITE_';
+    return ''; // backends, SPAs sin framework
 }

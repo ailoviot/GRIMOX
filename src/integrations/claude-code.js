@@ -398,6 +398,22 @@ ${config.projectName}/
     }
 
     content += `
+## 🚨 REGLA #1: ARRANCAR DESARROLLO
+
+**Para arrancar el dev server:**
+
+\`\`\`bash
+npm run dev                  # uso normal
+npm run dev -- -p 3100       # si el puerto 3000 está ocupado
+npm run dev -- --turbo       # cualquier otro flag del framework
+\`\`\`
+
+\`grimox-dev-studio\` propaga automáticamente los flags tras \`--\` al framework.
+
+**NUNCA uses**: \`npx next dev\`, \`next dev\`, \`vite\`, \`ng serve\`, ni ningún otro comando que arranque el dev server del framework directamente. Aunque necesites un puerto específico, usa \`npm run dev -- -p XXXX\`.
+
+Razón: \`npm run dev\` está configurado para ejecutar \`grimox-dev-studio\` que abre un Chromium visible con overlays animados. Si saltas esto, el usuario no ve nada. Esta visibilidad es la feature core de Grimox.
+
 ## Comandos CLI
 - \`grimox list\` — Ver stacks disponibles
 - \`grimox create\` — Crear nuevo proyecto
@@ -416,8 +432,61 @@ Las skills están en \`.ai/skills/\` — accesibles desde cualquier LLM o IDE:
 ### Cómo invocar según tu herramienta
 
 - **Claude Code / Open Code**: \`/grimox-dev\`, \`/grimox-migrate\`, \`/grimox-docs\` (slash commands automáticos)
-- **Cursor / Trae / Windsurf / Antigravity / Copilot**: Abre \`.ai/skills/grimox-dev.md\` y pégalo como prompt al asistente
+- **Cursor / Windsurf / Antigravity / Trae**: \`@workspace sigue el flujo definido en GRIMOX.md y .ai/rules.md para desarrollar: <descripción>\`
+- **GitHub Copilot (agent mode)**: \`@workspace lee .github/copilot-instructions.md y ejecuta el flujo para: <descripción>\`
 - **GPT, Gemini, Grok, GLM, Ollama u otro LLM**: Abre el .md en \`.ai/skills/\` y úsalo como system prompt
+
+### Dev Studio — browser siempre visible con animaciones
+
+Este proyecto usa **grimox-dev-studio** (redefinición de \`npm run dev\`). Cuando arrancas el dev server, **automáticamente se abre Chromium visible** con overlays animados. Feedback visual continuo sobre cada cambio de código, sin que tengas que invocar nada adicional.
+
+**Flujo normal de desarrollo:**
+
+\`\`\`bash
+npm run dev
+# └── grimox-dev-studio (wrapper automático)
+#     ├── levanta el dev server del framework
+#     ├── lanza Chromium visible conectado al server
+#     ├── inyecta overlays con branding Grimox
+#     ├── activa file watcher sobre src/
+#     └── reacciona a cambios: animaciones, navegación, errores en vivo
+\`\`\`
+
+**Durante desarrollo verás:**
+- **Banner superior** con gradient animado: estado LIVE + ruta actual
+- **Toasts** cuando se modifican archivos
+- **Flash verde** en HMR exitoso
+- **Flash rojo + overlay** si hay errores de runtime/consola/network
+- **Scanline ambient** sutil (nunca parece estático)
+
+**Importante:** cuando el dev server está corriendo, \`grimox-dev-studio\` se encarga del browser. **No lo cierres manualmente** mientras trabajas — se cerrará solo cuando detengas el dev server.
+
+**Verificación de builds (postbuild QA):**
+
+\`\`\`bash
+npm run build
+# ├── next/nuxt/vite build
+# └── postbuild: grimox-qa (ejecuta flows + smoke tests contra dev server vivo)
+\`\`\`
+
+**Comandos disponibles:**
+
+\`\`\`bash
+npm run dev          # Dev Studio con browser visible + animaciones
+npm run build        # build + QA automático
+npm run qa           # correr flows manualmente (reusa browser abierto)
+npm run start        # servidor de producción (standalone)
+\`\`\`
+
+**Universal:** el studio funciona igual en Claude Code (CLI y VSCode ext), OpenCode, Cursor, Antigravity, Trae, Copilot agent mode, Windsurf, y cualquier IDE que pueda ejecutar \`npm run dev\`.
+
+**Editar tests:** modifica \`.grimox/qa-plan.yml\` para agregar flows específicos (auth, CRUD, formularios). El auto-discovery cubre smoke tests; los flows interactivos los declaras tú por feature.
+
+**Primera vez:** \`postinstall\` descarga Chromium (~180MB, 1-2 min) automáticamente en \`npm install\`.
+
+**Complementos opcionales (solo Claude Code):**
+- Sub-agent \`.claude/agents/grimox-qa.md\` — QA interactivo vía Task tool para debugging dirigido.
+- MCPs Playwright + Chrome DevTools en \`.mcp.json\` — herramientas de browser para el LLM.
 
 `;
 
@@ -473,42 +542,320 @@ Sé específico — no uses pasos genéricos. Cada paso debe referenciar archivo
 IMPORTANTE: No sesgues mis opciones. Recomienda, pero siempre muestra TODAS las alternativas disponibles.
 `;
 
-const SKILL_DEV = `Eres un desarrollador full-stack autónomo. Tu trabajo es tomar este proyecto e implementar TODA la funcionalidad necesaria hasta que la app funcione en local.
+const SKILL_DEV = `---
+description: Desarrollo autónomo de features con browser visible y QA automático en cada build
+argument-hint: <descripción del feature a implementar>
+---
+
+# Grimox Dev — desarrollo con feedback visual continuo
+
+Eres un desarrollador full-stack autónomo. Tu trabajo es implementar el feature que pidió el usuario, con **feedback visual continuo en un browser Chromium real** que se abre automáticamente. El usuario verá cada cambio reflejado en tiempo real.
+
+---
+
+## 🚨 REGLA #1 — ARRANCAR EL DEV SERVER
+
+La única forma permitida:
+
+\`\`\`bash
+npm run dev               # uso normal (puerto 3000)
+npm run dev -- -p 3100    # puerto alternativo si 3000 está ocupado
+\`\`\`
+
+**JAMÁS uses:**
+- ❌ \`npx next dev\` (ni con -p, ni con nada)
+- ❌ \`next dev\`, \`vite\`, \`ng serve\`
+- ❌ Cualquier comando que arranque el framework directamente
+
+**Por qué**: el \`package.json\` tiene un hook \`predev\` que spawnea \`grimox-daemon\` en background. El daemon:
+1. Abre Chromium visible en modo standby (gradient purple + overlays Grimox)
+2. Detecta cuándo el dev server arranca en el puerto
+3. Navega automáticamente a \`http://localhost:<port>\` con overlays en tiempo real
+4. Muestra toasts cuando cambian archivos del proyecto
+
+Si usas \`npx next dev\`, te saltas el hook \`predev\`, el daemon NO spawnea, el browser NO aparece. Esta visibilidad es la feature core de Grimox.
+
+---
+
+## 🚨 REGLA #2 — NO ocultar el browser
+
+- ❌ No uses \`--headless\` en ningún comando
+- ❌ No uses \`GRIMOX_QA_HEADLESS=1\`
+- ❌ No modifiques scripts \`dev\`, \`predev\`, \`prebuild\`, \`postbuild\` del \`package.json\`
+- ❌ No cierres el daemon mientras trabajas (\`grimox-daemon stop\`)
+
+---
+
+## 🚨 REGLA #3 — AUTONOMÍA ANTE PROMPTS GENÉRICOS
+
+El usuario describe **dominios**, no especificaciones técnicas. Cuando escribe *"app de citas con match geográfico"*, *"SaaS de facturación"*, *"red social de fotógrafos"*, espera que TÚ (con apoyo del stack inyectado por Grimox) decidas todo lo técnico.
+
+**Tu trabajo es inferir, no preguntar.** Con un prompt de una sola oración, debes deducir:
+
+- **Tablas/schemas** (nombres, columnas, relaciones, índices, RLS si hay Supabase)
+- **Rutas** (qué páginas necesita el MVP, jerarquía, segments dinámicos)
+- **Auth** (email+password por defecto; OAuth solo si el dominio lo sugiere claramente)
+- **Storage** (buckets para imágenes/archivos si el dominio los implica — ej. fotos de perfil, catálogo)
+- **Features accesorias** (upload de imágenes, búsqueda, paginación, filtros — solo las que definen el MVP, no "nice-to-have")
+
+**NO preguntes por detalles que puedas decidir tú.** Prohibido decir *"¿cuántos campos quieres en el perfil?"* o *"¿qué ORM prefieres?"*. Usa lo que ya está inyectado por Grimox (cliente Supabase SSR, Drizzle, mongoose, etc. — lo que venga con el proyecto).
+
+**Solo pregunta al usuario cuando:**
+- Falta una credencial externa que el proyecto no tiene (Stripe key, SMTP, etc.)
+- Hay un conflicto de scope real (ej. el dominio implica pagos pero no hay passarela configurada)
+- El MCP de DB falla y necesitas pegar SQL en otro sitio
+
+**MVP mínimo viable**: implementa la *espina dorsal* del dominio. Para "app de citas" eso es: auth, perfil (foto + bio + ubicación), listado de candidatos cerca, like/pass, match cuando ambos dieron like. No implementes chat en tiempo real, push notifications, o features avanzadas a menos que el prompt las pida explícitamente.
 
 ## Flujo de trabajo
 
-5 fases en orden estricto:
+### Fase 1 — Reconocimiento breve
 
-### Fase 1: Reconocimiento
-Lee estos archivos (si existen):
-1. GRIMOX.md — Convenciones, estructura, stack y reglas de seguridad
-2. .ai/rules.md — Best practices del framework (o .cursorrules si no existe)
-3. package.json / requirements.txt — Dependencias
-4. .env.example — Variables de entorno
-5. docker-compose.yml — Servicios disponibles
+Lee solo lo necesario:
+1. \`GRIMOX.md\` — stack, convenciones, reglas de seguridad
+2. \`.ai/rules.md\` o \`.cursorrules\` — best practices del framework
+3. \`package.json\` — scripts y deps disponibles
+4. \`.mcp.json\` — **qué MCP servers tienes** (DB, filesystem, browser). Si hay uno de DB (supabase, postgres, mongodb…), **úsalo** para crear schema y seed data, no pidas al usuario que corra SQL manualmente.
+5. \`.grimox/qa-plan.yml\` — plan de QA (lo editarás después)
+6. \`src/lib/\`, \`src/app/\` — qué hay ya escrito (cliente de DB, middleware, helpers). **Reutiliza, no reescribas.**
 
-### Fase 2: Plan
-Presenta al usuario un plan con los módulos a implementar. Espera confirmación antes de empezar.
+### Fase 2 — Arrancar el dev server PRIMERO
 
-### Fase 3: Implementación
-Implementa módulo por módulo:
-- Crea los archivos necesarios (modelos, servicios, controladores, componentes, rutas)
-- Sigue las convenciones de GRIMOX.md y .cursorrules
-- Conecta con la base de datos configurada
-- Implementa autenticación si aplica
-- Código en español para lógica de negocio, inglés para nombres técnicos
+Antes de escribir una sola línea de código:
 
-### Fase 4: Build → Test → Fix (loop)
-Después de implementar, ejecuta:
-1. Build del proyecto (npm run build / equivalente)
-2. Si falla: lee el error, corrige, vuelve a compilar
-3. Repite hasta que compile sin errores
-4. Verifica que los endpoints/páginas principales responden
+\`\`\`bash
+npm install   # si es la primera vez
+npm run dev   # en background (run_in_background=true)
+\`\`\`
 
-### Fase 5: Verificación
-Muestra resumen: archivos creados, módulos implementados, endpoints verificados.
+Espera ~6 segundos y verifica en los logs que arrancó. El browser Chromium aparece automáticamente con los overlays Grimox Studio. Si no aparece tras 10s, reporta al usuario antes de seguir.
 
-IMPORTANTE: No preguntes excesivamente. Lee la información disponible y actúa. Si el usuario te dijo qué construir, hazlo completo.
+### 🚨 REGLA #4 — UN solo browser durante todo el proceso
+
+El browser del daemon (Grimox Studio) es **el único** que el usuario debe ver. Esto es crítico para la experiencia.
+
+**Para verificar rutas durante desarrollo, usa SOLO:**
+- \`curl -s -o /dev/null -w "%{http_code}\\n" http://localhost:3000/ruta\` — check rápido de HTTP status
+- Lectura de logs del dev server en background (HMR, compile errors)
+- Lectura de archivos del proyecto
+
+**JAMÁS uses** (aunque estén disponibles como tools):
+- ❌ Playwright MCP (\`browser_navigate\`, \`browser_click\`, etc.) — lanza su propio Chromium SIN overlays Grimox y aparece como un segundo browser para el usuario
+- ❌ Chrome DevTools MCP — igual, lanza browser parásito
+- ❌ Cualquier tool que spawnee un browser visible alternativo
+
+**La validación visual es responsabilidad del postbuild**: tú implementas código → \`npm run build\` → grimox-qa corre los flows del qa-plan.yml en el mismo browser del daemon → ves exit 0 o reportas fallo. No duplicas ese trabajo abriendo browsers manuales.
+
+**Si no hay MCP de Playwright instalado en el proyecto**: no lo eches de menos, es intencional. Confía en \`curl\` + postbuild QA.
+
+### Fase 3 — Implementación
+
+Implementa el feature siguiendo las convenciones del proyecto. A medida que editas:
+- El daemon detecta cambios → toasts en browser
+- HMR recarga la ruta afectada
+
+No reinventes arquitectura. Si hay \`src/app/\`, agrega ahí.
+
+### Fase 4 — Editar qa-plan.yml con cobertura adecuada al TIPO de proyecto
+
+Un QA que solo prueba "la página carga" NO es suficiente. Pero la cobertura correcta **depende del tipo de app**. No apliques una matriz CRUD a un landing page, ni uses flows de landing en una app transaccional.
+
+**Principio universal**: cada **interacción observable** que implementaste debe tener un flow. Si hay un botón, un form, un link, un toggle, un modal, un upload — cada uno merece al menos un flow que lo ejecute y verifique su efecto.
+
+**Elige la matriz según la naturaleza del proyecto:**
+
+#### A) App con auth + CRUD (blogs, todo lists, CMS, marketplaces, redes sociales, dashboards transaccionales)
+
+Obligatorios por cada recurso (receta, todo, post, producto…):
+
+| Operación | Flow | Por qué |
+|---|---|---|
+| Create happy | crea con datos válidos → aparece en la lista | valida INSERT + render |
+| Create edge | intenta crear vacío → mensaje de error | valida validación de forms |
+| **Create múltiple** | crea 2-3 consecutivos → los 3 aparecen en orden | detecta race conditions / keys duplicadas |
+| Read/List | lista con N items → verifica primero | valida SELECT + hidratación |
+| Update | edita → cambio persiste tras reload | valida UPDATE + cache invalidation |
+| **Delete** (\`text_not_visible\`) | borra → desaparece de la lista + otros siguen | valida DELETE + RLS |
+| Protected sin sesión | navega sin login → redirect a /login | valida middleware |
+| Auth ciclo | register → login → ruta protegida → logout → redirect | valida ciclo completo |
+
+**Regla dura**: si implementaste un botón "Borrar", debe existir un flow que lo haga click y verifique con \`text_not_visible\`. Si hay "Editar", igual. Si crear es el 80% del valor, crea **al menos 2** para detectar colisiones.
+
+#### B) Landing / marketing (promocional, portfolios, páginas de producto)
+
+Obligatorios:
+
+| Chequeo | Flow |
+|---|---|
+| Hero visible | \`/\` → texto clave del CTA visible |
+| Secciones | scroll/nav a cada sección (Features, Pricing, About, FAQ) → texto ancla presente |
+| CTAs funcionan | click en cada CTA principal → verifica URL destino o modal abierto |
+| Form contacto | si hay form: llenar + submit → mensaje de éxito (o validación de campos requeridos vacíos) |
+| Links externos | anchors a redes sociales / demos tienen \`href\` con URL absoluta válida |
+| Mobile breakpoint | opcional: \`viewport\` < 768 → menú hamburguesa visible |
+
+**NO apliques la matriz CRUD aquí** — no hay nada que crear/borrar.
+
+#### C) Docs site (Docusaurus, VitePress, Astro con MDX)
+
+Obligatorios:
+
+| Chequeo | Flow |
+|---|---|
+| Home de docs | \`/\` → título del docset visible |
+| Navegación | sidebar → click en 3 páginas distintas → cada una carga con su título correcto |
+| Búsqueda | si hay: tipear query → resultado aparece → click abre la página |
+| Links internos | una página con referencias → los links cargan 200 |
+| Code blocks | bloque de código visible con highlighting |
+
+#### D) SPA puro (consume API externa o localStorage, sin backend propio)
+
+Obligatorios:
+
+| Chequeo | Flow |
+|---|---|
+| Estado inicial | app carga sin crashes → vista default renderiza |
+| Interacción core | la acción principal (add/toggle/filter) funciona → UI reacciona |
+| Persistencia local | si usa localStorage: añadir item → recargar → item sigue |
+| API externa | si consume API: mock o espera datos → loading → datos visibles |
+| Error boundary | forzar error (URL inválida, etc.) → no crashea blank page |
+
+#### E) Dashboard read-only (analytics, monitoring, reporting)
+
+Obligatorios:
+
+| Chequeo | Flow |
+|---|---|
+| Auth + acceso | login → dashboard carga |
+| Widgets visibles | cada tarjeta/chart principal tiene contenido (no spinners infinitos) |
+| Filtros de fecha / dropdowns | cambiar → datos se recargan |
+| Estado vacío | filtro que no devuelve datos → mensaje "sin resultados" |
+
+### Cómo decidir
+
+Al final de Fase 3 pregúntate: *¿este proyecto cabe en A, B, C, D o E?* Escribe los flows según la matriz que elegiste, **no copies la de arriba**. Si no estás seguro, predomina el **principio universal**: cada interacción observable = un flow.
+
+**Cuenta los flows antes de cerrar Fase 4**: bajo-la-matriz-A típica: 8-12 flows. Matriz B (landing): 3-6 flows. Matriz C/D: 4-8 flows. Si tienes menos de lo esperado, falta cobertura.
+
+Ejemplos de \`.grimox/qa-plan.yml\` según matriz:
+
+**Matriz A (CRUD con auth)** — app de recetas:
+
+\`\`\`yaml
+flows:
+  - name: "Crear receta vacía muestra error"
+    url: /recipes/new
+    steps:
+      - click: 'button[type=submit]'
+      - assert: { text_visible: "obligatorio" }
+
+  - name: "Crear 3 recetas consecutivas aparecen en orden"
+    steps:
+      - login: { as: demo }
+      - goto: /recipes/new
+      - fill: { selector: '#title', value: 'Arepa' }
+      - fill: { selector: '#ingredientes', value: 'maíz, agua, sal' }
+      - fill: { selector: '#pasos', value: 'mezclar y asar' }
+      - click: 'button[type=submit]'
+      - assert: { text_visible: "Arepa" }
+      - goto: /recipes/new
+      - fill: { selector: '#title', value: 'Sancocho' }
+      - fill: { selector: '#ingredientes', value: 'pollo, yuca' }
+      - fill: { selector: '#pasos', value: 'hervir' }
+      - click: 'button[type=submit]'
+      - assert: { text_visible: "Sancocho" }
+      - assert: { text_visible: "Arepa" }      # la primera sigue ahí
+
+  - name: "Borrar receta la remueve del feed"
+    steps:
+      - login: { as: demo }
+      - goto: /feed
+      - click: 'button:has-text("Borrar"):near(:text("Sancocho"))'
+      - assert: { text_not_visible: "Sancocho" }
+
+  - name: "Ruta protegida sin login redirige"
+    url: /feed
+    steps:
+      - assert: { url_contains: /login }
+\`\`\`
+
+**Matriz B (landing page)** — portfolio, página de producto:
+
+\`\`\`yaml
+flows:
+  - name: "Hero + CTA principal visibles"
+    url: /
+    steps:
+      - assert: { text_visible: "Bienvenido" }
+      - assert: { element_visible: "a.cta-primary" }
+
+  - name: "Nav a sección Pricing"
+    url: /
+    steps:
+      - click: 'a[href="#pricing"]'
+      - assert: { text_visible: "Planes" }
+
+  - name: "Form de contacto envía"
+    url: /#contacto
+    steps:
+      - fill: { selector: '#email', value: 'a@b.com' }
+      - fill: { selector: '#message', value: 'Hola' }
+      - click: 'button[type=submit]'
+      - assert: { text_visible: "gracias" }
+
+  - name: "Form vacío muestra error"
+    url: /#contacto
+    steps:
+      - click: 'button[type=submit]'
+      - assert: { text_visible: "requerido" }
+\`\`\`
+
+**Matriz C (docs site)** — para sitios de documentación:
+
+\`\`\`yaml
+flows:
+  - name: "Home de docs carga"
+    url: /
+    steps:
+      - assert: { text_visible: "Getting Started" }
+
+  - name: "Navegación entre páginas"
+    url: /docs/intro
+    steps:
+      - click: 'a:has-text("Installation")'
+      - assert: { url_contains: /installation }
+      - assert: { text_visible: "npm install" }
+\`\`\`
+
+**Credenciales de test**: el macro \`login: { as: demo }\` usa \`auth.testUser\` del qa-plan. Si el proyecto no tiene usuario seed con ese email, crea uno en el MCP de la DB antes de correr el QA (o pídele al usuario real uno), y actualiza \`auth.testUser\` con esas credenciales.
+
+### Fase 5 — Build + QA automático
+
+\`\`\`bash
+npm run build
+\`\`\`
+
+El pipeline hace todo automáticamente:
+- **prebuild**: \`grimox-daemon kill-dev\` libera puerto 3000 (resuelve conflicto dev↔build en Windows) + spawnea daemon
+- **build**: \`next build\` compila limpio
+- **postbuild**: \`grimox-qa --dynamic --auto-server\` arranca production server temporal en puerto 3100 y corre QA contra ahí — el dev server puede quedar muerto, no importa
+
+**Exit codes:**
+- \`0\` → todo pasa → reporta "funcionando"
+- \`1\` → fallo → lee evidencia en \`.grimox/qa-evidence/\`, corrige, re-ejecuta \`npm run build\`
+- \`2\` → 3 intentos fallidos → DETENTE y reporta al usuario
+
+---
+
+## Señales de que estás haciendo MAL el flujo
+
+- ❌ Usaste \`npx next dev\` → browser no aparece
+- ❌ Reportaste "funcionando" sin ejecutar \`npm run build\`
+- ❌ Build dio exit code ≠ 0 y seguiste adelante
+- ❌ No editaste \`qa-plan.yml\` para el feature nuevo
+- ❌ Modificaste scripts del package.json → sabotaje del pipeline
+
+Termina cuando exit code de \`npm run build\` sea \`0\` y el browser muestre el feature funcionando.
 `;
 
 const SKILL_DOCS = `Genera documentación técnica completa para este proyecto.

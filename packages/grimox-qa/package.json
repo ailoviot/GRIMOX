@@ -1,0 +1,40 @@
+{
+    "name": "grimox-qa",
+    "version": "0.1.0",
+    "description": "QA visual autónomo para proyectos Grimox. Ejecuta Playwright headed/headless sobre un dev server, descubre rutas automáticamente y reporta con exit codes. Universal: funciona con cualquier LLM/IDE vía npm scripts.",
+    "type": "module",
+    "main": "./src/index.js",
+    "bin": {
+        "grimox-qa": "./bin/grimox-qa.js",
+        "grimox-dev-studio": "./bin/grimox-dev-studio.js",
+        "grimox-daemon": "./bin/grimox-daemon.js",
+        "grimox-banner": "./bin/grimox-banner.js"
+    },
+    "exports": {
+        ".": "./src/index.js"
+    },
+    "files": [
+        "bin",
+        "src",
+        "README.md"
+    ],
+    "keywords": [
+        "qa",
+        "testing",
+        "playwright",
+        "visual-testing",
+        "e2e",
+        "grimox"
+    ],
+    "engines": {
+        "node": ">=20"
+    },
+    "dependencies": {
+        "playwright": "^1.48.0",
+        "chokidar": "^3.6.0",
+        "yaml": "^2.5.0",
+        "picocolors": "^1.1.0"
+    },
+    "author": "Alexander",
+    "license": "MIT"
+}

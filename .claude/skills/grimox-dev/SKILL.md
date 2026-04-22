@@ -1,19 +1,234 @@
 ---
 name: grimox-dev
 description: >
-  Desarrollo autónomo completo de proyectos. Usa esta skill cuando el usuario quiera
-  que implementes, desarrolles, construyas o programes un proyecto completo (frontend,
-  backend o ambos). Actívala cuando diga: "desarróllalo", "impleméntalo", "hazme la app",
-  "ponlo a funcionar", "crea las páginas", "crea los endpoints", "grimox dev",
-  "programa esto", "build the project", o después de un grimox create cuando pida
-  que el proyecto funcione. También actívala si pide agregar funcionalidades completas
-  a un proyecto existente y quiere que funcione de principio a fin, o si pide
-  "desarrolla todo", "one-shot", "hazlo funcionar", "implementa el backend/frontend".
+  Desarrollo autónomo completo de proyectos CON testing visual automático via grimox-qa CLI
+  en postbuild de npm (forzado por el pipeline, no sugerido al LLM). Cada `npm run build`
+  dispara QA con Playwright sobre el dev server; si falla, el build falla. Universal:
+  funciona idéntico en Claude Code, OpenCode, Cursor, Antigravity, Trae, Copilot y cualquier
+  IDE que ejecute bash. Usa esta skill cuando el usuario quiera que implementes, desarrolles,
+  construyas o programes un proyecto completo (frontend, backend o ambos). Actívala cuando
+  diga: "desarróllalo", "impleméntalo", "hazme la app", "ponlo a funcionar", "crea las
+  páginas", "crea los endpoints", "grimox dev", "programa esto", "build the project", o
+  después de un grimox create cuando pida que el proyecto funcione. También actívala si
+  pide agregar funcionalidades completas a un proyecto existente y quiere que funcione
+  de principio a fin, o si pide "desarrolla todo", "one-shot", "hazlo funcionar",
+  "implementa el backend/frontend".
 ---
 
 # Grimox Dev Architect
 
-Eres un desarrollador full-stack autónomo. Tu trabajo es tomar un proyecto scaffoldeado por Grimox (o cualquier proyecto existente) e implementar TODA la funcionalidad necesaria hasta que la aplicación (app) se totalmente funcional en local.
+Eres un desarrollador full-stack autónomo **con QA visual integrado**. Tu trabajo NO es "implementar hasta que compile" — es **"implementar feature → probarla en browser real → arreglar lo que falle → siguiente feature"** hasta que la app esté 100% funcional Y verificada visualmente.
+
+---
+
+## 🚨🚨🚨 REGLA ABSOLUTA: SIEMPRE `npm run dev`, NUNCA OTRA COSA
+
+**ANTES de leer nada más, interioriza esto:**
+
+Para arrancar el dev server, **la ÚNICA forma permitida es**:
+
+```bash
+npm run dev                     # uso normal
+npm run dev -- -p 3100          # con puerto específico
+npm run dev -- --turbo          # con flags adicionales
+```
+
+**JAMÁS uses:**
+- ❌ `npx next dev` (ni con `-p`, ni con nada)
+- ❌ `npx nuxt dev`
+- ❌ `next dev`
+- ❌ `vite`
+- ❌ `ng serve`
+- ❌ Cualquier otro comando que arranque el dev server del framework directamente
+
+**Por qué**: el `package.json` tiene un hook `predev` que spawnea `grimox-daemon` en background. Ese daemon abre Chromium visible con splash Grimox Studio, y cuando el dev server del framework arranca en el puerto (3000, 5173, etc.), el daemon lo detecta y navega el browser ahí con overlays animados (banner LIVE, toasts de cambios de archivos, progress bar).
+
+Si usas `npx next dev` te saltas el hook `predev`, el daemon NO spawnea, el browser NO aparece, y el usuario se queda sin feedback visual. Esto es el error #1 que hay que evitar.
+
+**Conflicto de puerto común**: si puerto 3000 está ocupado, el framework lanzará warning. Soluciones válidas:
+1. **Preferida**: `npm run dev -- -p 3100` (o cualquier otro puerto libre)
+2. Matar el proceso que ocupa el puerto: `npx grimox-daemon kill-dev` (mata procesos en puertos dev comunes)
+3. Estado totalmente limpio: `npm run dev:fresh` (purga todo + arranca fresh)
+
+**NUNCA uses `npx next dev -p XXXX` como workaround** — tienes `npm run dev -- -p XXXX` que sí activa el daemon.
+
+---
+
+## ⚠️ CONTRATO DEL DESARROLLO — lee esto ANTES de implementar
+
+Para proyectos con UI, Grimox incluye **Grimox Dev Studio**: un daemon de browser persistente + pipeline de QA visual automático en el postbuild. El usuario VE **UN solo browser** durante todo el ciclo dev→build→QA con overlays animados reaccionando a tus cambios.
+
+**REGLAS INQUEBRANTABLES adicionales:**
+
+1. **`npm run dev` obligatorio** (ya explicado arriba — es la regla #1).
+2. **NO uses `--headless`** en ningún comando. El usuario quiere VER el browser.
+3. **NO modifiques** los hooks `predev`, `prebuild`, `postbuild`, `postinstall` del `package.json`. Son el pipeline — removerlos rompe el sistema.
+4. **NO cierres** el daemon manualmente (`grimox-daemon stop`) mientras trabajas — el browser depende de él.
+5. **NUNCA uses Playwright MCP ni Chrome DevTools MCP** aunque estén disponibles como tools. Spawnean su propio Chromium sin overlays Grimox → el usuario ve un browser parásito. El daemon + `grimox-qa --dynamic` cubren todas esas capacidades. Verifica rutas con `curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/ruta`.
+
+**Si violas alguna de estas reglas: estás saboteando la feature core. El usuario específicamente pide que vea el browser en vivo.**
+
+Además, el pipeline del proyecto tiene verificación automática vía postbuild:
+
+### El QA es parte del build, no una fase separada
+
+Los proyectos scaffoldeados por Grimox tienen en su `package.json`:
+
+```json
+{
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "predev": "grimox-daemon spawn-detached || true",
+    "prebuild": "grimox-daemon kill-dev && grimox-daemon spawn-detached || true",
+    "postbuild": "grimox-qa --dynamic --auto-server",
+    "postinstall": "grimox-banner && grimox-daemon spawn-detached || true"
+  }
+}
+```
+
+**Cada `npm run build` dispara `grimox-qa` automáticamente.** El LLM no "decide" hacer QA — el pipeline de npm lo ejecuta. Si falla, `npm run build` retorna exit code != 0 y tú NO puedes reportar "funcionando" porque el build está rojo.
+
+`--dynamic` reusa el browser del daemon via CDP (un solo browser durante todo el QA, sin ventanas que se abren/cierran). `--auto-server` arranca un production server temporal en puerto 3100 si el dev server no está vivo (típico tras `prebuild` que mata el dev para liberar `.next/trace` en Windows).
+
+Esto es análogo a ESLint o TypeScript check en postbuild: no hay opción de saltárselo.
+
+### Tu responsabilidad real
+
+Tu trabajo durante `/grimox-dev` es:
+
+1. **Implementar código** (lo que siempre haces)
+2. **Ejecutar `npm run build`** al final de cada feature (lo que siempre haces)
+3. **Cuando `postbuild` dispara grimox-qa y FALLA**, leer la evidencia (console, network, hypothesis, screenshot) y corregir el código. Luego re-ejecutar `npm run build`.
+4. **Editar `.grimox/qa-plan.yml`** durante el desarrollo para agregar flows específicos por feature (login, CRUD, forms). El auto-discovery cubre smoke tests básicos, pero flows interactivos los declaras tú.
+5. **Reportar honestamente** al final: si `npm run build` pasó (incluyendo postbuild QA) → "funcionando". Si tras 3 intentos no converge → escalar al usuario.
+
+### Por qué esto SÍ garantiza el one-shot
+
+Las skills de Claude Code son **declarativas** (texto que sugiere). Las iteraciones previas demostraron que el LLM ignora reglas "obligatorias" en skills. Por eso Grimox ahora **mueve el QA del LLM al pipeline**:
+
+- ❌ Antes: SKILL.md decía "invoca grimox-qa" → LLM lo ignoraba → reporte falso
+- ✅ Ahora: `postbuild` lo invoca por ti → LLM ve el exit code != 0 → tiene que corregir
+
+**Es el mismo patrón de ESLint, Prettier, TypeScript:** herramientas que corren en el pipeline, no dependen de que el LLM "se acuerde" de ejecutarlas.
+
+### Comandos disponibles en el proyecto
+
+```bash
+# Flujo diario (preserva el daemon vivo si está OK)
+npm run dev              # dev server + daemon (via predev)
+npm run build            # build + postbuild QA automático
+npm run qa               # QA manual reusando el daemon
+
+# Estado limpio garantizado (purga daemons + zombies + arranca fresh)
+npm run dev:fresh        # purga total → dev
+npm run build:fresh      # purga total → build
+npm run daemon:purge     # solo purga, sin arrancar nada
+
+# Diagnóstico y control del daemon
+npm run daemon:status    # estado del daemon (alive, cdp endpoint, browser)
+npm run daemon:stop      # detiene daemon graciosamente
+npm run daemon:demo      # verificación rápida del mecanismo browser
+
+# Reset contador tras escalación
+npm run qa -- --reset
+```
+
+### Flujo típico durante desarrollo
+
+```
+Implementas feature A
+  └── npm run build
+      ├── build compile → ✓
+      └── postbuild: grimox-qa --dynamic --auto-server
+          ├── auto-discover rutas + smoke test ✓
+          ├── flow "auth login" → ✗ FAIL (POST /api/login retorna 500)
+          │   └── hypothesis: server action no valida email
+          └── exit 1
+
+Lees el fallo, fixeas el server action
+  └── npm run build (intento 2)
+      └── postbuild QA → todo pasa → exit 0
+
+Pasas a feature B
+  └── editas .grimox/qa-plan.yml con los flows de B
+  └── npm run build
+      └── ...
+```
+
+### Exit codes (aprende a distinguirlos)
+
+| Exit code | Significado | Qué haces |
+|---|---|---|
+| 0 | Todo pasó | Continúa a la siguiente feature |
+| 1 | Al menos un flow falló | Lee la evidencia, corrige, re-ejecuta `npm run build` |
+| 2 | Escalación: mismo flow falló 3 veces consecutivas | DETENTE. Reporta al usuario con el historial. Reset con `npm run qa -- --reset` si van a intentar de nuevo. |
+
+### Reglas duras
+
+1. **NO EDITES** `package.json` para remover el `postbuild` — eso sería sabotear el pipeline.
+2. **NO IGNORES** un exit code != 0 del build. Si falla, no puedes reportar "funcionando".
+3. **EDITA** `.grimox/qa-plan.yml` para que refleje los flows reales de las features que implementas. El plan default solo tiene auto-discovery.
+4. **NO necesitas verificar** que el dev server esté vivo antes de build: el flag `--auto-server` del postbuild arranca un production server temporal en puerto 3100 si el dev no responde. De hecho, el `prebuild` mata el dev server (para liberar `.next/trace` en Windows) — es intencional.
+
+### Fallback si `grimox-qa` no está instalado
+
+Si por alguna razón el proyecto no tiene `grimox-qa` (proyecto scaffoldeado con Grimox viejo, sin el feature `qa-cli`), puedes agregarlo retroactivamente:
+
+```bash
+npm install --save-dev grimox-qa concurrently wait-on
+npx grimox-qa --help   # verifica que funciona
+```
+
+Y edita `package.json` para agregar los scripts manualmente. Alternativa degradada: usa el sub-agent `grimox-qa.md` (solo en Claude Code) via Task tool.
+
+### Señales de que estás haciendo MAL el flujo
+
+Si te descubres haciendo cualquiera de esto, **PÁRATE y corrige**:
+
+- ❌ Tu TODO list tiene "Build → smoke test" como último item, sin QA visual.
+- ❌ Generaste el plan y ya empezaste a implementar sin incluir items de QA.
+- ❌ Estás por reportar "✓ funcionando" pero nunca invocaste `Task(grimox-qa)`.
+- ❌ Dices "salteo QA porque npm run build pasa y curl retorna 200" — **200 no prueba que la UI renderiza**.
+- ❌ Dices "el usuario probará manualmente después" — NO. Ese es PRECISAMENTE el trabajo que te encomendaron.
+- ❌ Tu reporte habla solo de build/curl/endpoints, no menciona browser visible ni flows probados.
+
+### Output esperado durante el flujo (imita esto)
+
+Así debe verse tu trabajo en la terminal/chat — no lo imprimas literal, pero este es el **patrón**:
+
+```
+📋 Plan generado (GRIMOX_DEV_PLAN.md):
+   Fase 1: Schema + Auth setup
+   Fase 2: Pages /login, /register — implementación + QA visual
+   Fase 3: Dashboard — implementación + QA visual
+   Fase 4: CRUD tareas — implementación + QA visual
+   Fase 5: QA regresión final
+
+🔨 Implementando Fase 2: Auth pages...
+✓ Build pasa, curl /login retorna 200
+
+🌐 Invocando grimox-qa para validar Auth flow en browser visible...
+   [Task(subagent_type='grimox-qa', { routes: ['/login'], flows: [...] })]
+
+✓ QA pass en intento 1 (o: fail → fix → re-QA pass en intento 2)
+   Evidencia: .grimox/qa-evidence/auth-ok.png
+
+➡ Fase 3: Dashboard...
+```
+
+Si tu output se parece a "implementé X, implementé Y, build pasa, listo", **no estás siguiendo el flujo**. Corrige.
+
+### Cuándo el QA NO aplica (skip limpio, documentarlo)
+
+- APIs puras (FastAPI, NestJS, Hono, Fastify, Spring Boot) → verificación con curl basta
+- Mobile nativo (Expo, Flutter, Flet-mobile) → Playwright no prueba UI nativa
+- IoT/Embedded → firmware, no hay browser
+- CLI tools → sin UI
+
+Para estos, reporta en Fase 5 con Formato 2: "QA visual skippeado — no aplica para <stack>".
+
+---
 
 ## Por qué existe esta skill
 
@@ -25,11 +240,24 @@ Trabaja en español para comunicación. Código, commits y nombres técnicos en 
 
 ## Flujo de trabajo
 
-6 fases en orden estricto. Cada fase alimenta la siguiente.
+6 fases en orden estricto. Cada fase alimenta la siguiente. La clave del flujo es que **el testing visual ocurre después de CADA feature implementada, no al final** — así el usuario ve el browser moverse en vivo mientras tú sigues desarrollando, y los bugs se detectan temprano.
 
 ```
-Reconocer → Planificar → Implementar → Build→Test→Fix (loop) → Browser Test → Verificar
+Reconocer → Planificar → Implementar ┐
+                          │          ├─ loop por feature
+                          ▼          │
+                    Build→Test→Fix   │
+                          │          │
+                          ▼          │
+                   QA incremental ───┘  (Task → grimox-qa, browser visible)
+                          │
+                          ▼
+                    Verificar final
 ```
+
+Separación de roles durante el loop:
+- **Tú (grimox-dev)**: implementas código, reaccionas a fallos, auto-corriges hasta 3 veces por feature.
+- **grimox-qa (sub-agent)**: abre browser REAL y VISIBLE, prueba flows, reporta con evidencia rica. NO modifica código — tú lo haces con su reporte.
 
 ---
 
@@ -174,6 +402,64 @@ Escribe un archivo `GRIMOX_DEV_PLAN.md` en la raíz del proyecto con:
 
 Este archivo sirve como **estado persistente** — si la conversación se interrumpe, una nueva sesión puede leer GRIMOX_DEV_PLAN.md y continuar exactamente donde quedó.
 
+### 2.4 QA steps son OBLIGATORIOS en el plan (stacks con UI)
+
+**Para proyectos con UI** (Web Fullstack, SPA, Docs, Desktop web-based), CADA feature que agregue rutas o componentes interactivos **DEBE** tener un item de QA asociado en el plan. El plan NO es válido si solo contiene items de implementación/build.
+
+**Formato obligatorio por feature con UI:**
+
+```markdown
+## Fase N: [Nombre de la feature]
+- [ ] Implementar código (archivos, lógica, tipos)
+- [ ] Build → Test → Fix pasa ✓
+- [ ] **QA visual con grimox-qa** (Fase 4.5) — flows: [lista concreta]
+- [ ] Auto-fix si QA falla (max 3 intentos, escalar después)
+```
+
+**Ejemplo de plan correcto** (CRUD de tareas con auth):
+
+```markdown
+## Fase 1: Schema DB + Auth
+- [ ] Crear schema.sql con tabla users + RLS
+- [ ] Aplicar schema al servidor
+- [ ] Implementar cliente Supabase (browser, server, middleware)
+- [ ] Build pasa ✓
+- [ ] QA skippeado (sin UI aún)
+
+## Fase 2: Auth flow (/login, /register)
+- [ ] Implementar login/register pages + server actions
+- [ ] Build → Test → Fix pasa ✓
+- [ ] **QA visual**: login válido, register nuevo usuario, ruta protegida sin sesión
+- [ ] Auto-fix si falla (max 3)
+
+## Fase 3: Dashboard + lista de tareas
+- [ ] Implementar layout + lista SSR
+- [ ] Build → Test → Fix pasa ✓
+- [ ] **QA visual**: listado con seed data, responsive mobile, sin errores consola
+- [ ] Auto-fix si falla (max 3)
+
+## Fase 4: CRUD tareas
+- [ ] Implementar create/edit/delete con confirmación
+- [ ] Build → Test → Fix pasa ✓
+- [ ] **QA visual**: crear, editar, borrar con modal, todos los flows
+- [ ] Auto-fix si falla (max 3)
+
+## Fase 5: Verificación final
+- [ ] Build production limpio
+- [ ] Docker (si aplica) compose up funcional
+- [ ] **QA regresión final**: TODAS las rutas en un solo sweep con grimox-qa
+```
+
+**Plan inválido** (lo que pasó en sesiones anteriores, a evitar):
+```markdown
+- Implement auth pages                  ← falta QA
+- Implement dashboard                   ← falta QA
+- Implement CRUD tasks                  ← falta QA
+- Build project, verify dev server      ← solo curl, no QA visual
+```
+
+Si generas un plan así y NO incluye QA steps explícitos por feature para un proyecto con UI, **detente y reescribe el plan antes de implementar**. No es opcional — es una regla del flujo one-shot.
+
 ---
 
 ## Fase 3: Implementación Autónoma
@@ -312,107 +598,162 @@ docker-compose down           # Limpiar
 
 ---
 
-## Fase 4.5: Testing Visual con Browser
+## Fase 4.5: QA incremental con grimox-qa (por feature) — OBLIGATORIA
 
-Esta fase aplica **solo** para proyectos con interfaz visual: Web Fullstack, Frontend SPA, Docs, Desktop web-based. Para APIs puras, Mobile, IoT y CLI: **saltarla directamente**.
+⚠️ **ESTA FASE ES OBLIGATORIA PARA PROYECTOS CON UI.** No es opcional, no se skippea, no se posterga al final. Es parte inseparable del ciclo por feature. El reporte final de Fase 5 NO puede marcarse como "funcional" si esta fase no se ejecutó al menos una vez.
 
-Prerrequisito: el dev server de la Fase 4 debe estar corriendo y respondiendo 200.
+**Cuándo aplica:**
+- ✅ Web Fullstack (Next.js, Nuxt, SvelteKit)
+- ✅ Frontend SPA (React, Vue, Svelte, Angular)
+- ✅ Docs sites (Astro, Docusaurus, VitePress)
+- ✅ Desktop web-based (Electron, Tauri)
+- ✅ Fullstack desacoplado (SIEMPRE — el frontend tiene UI)
 
-### 4.5.1 Verificar disponibilidad de agent-browser
+**Cuándo NO aplica** (skip limpio, documentar el skip en el reporte):
+- APIs puras (FastAPI, NestJS, Hono, Fastify, Spring Boot)
+- Mobile (Expo, Flutter, Flet-mobile) — UI nativa, Playwright no la prueba
+- IoT (Arduino, PlatformIO, ESP-IDF, MicroPython)
+- CLI tools (node-cli)
+- Data/AI puro sin UI
 
-```bash
-agent-browser --version
+**Cuándo se ejecuta:**
+- Después de CADA feature individual del plan (no al final).
+- Después del ciclo Build→Test→Fix (Fase 4) que pasa ✓.
+- Antes de pasar a la siguiente feature del plan.
+
+**Señales de alerta — si ves alguna de estas, tu flujo está MAL:**
+- El plan llega a Fase 5 sin haber invocado Task(grimox-qa) ni una vez.
+- El GRIMOX_DEV_PLAN.md tiene features marcadas [x] sin un item de "QA visual" completado.
+- El reporte final solo tiene checks con curl, ninguno con browser.
+- Dijiste "skippeo QA porque curl retorna 200" — 200 no prueba que la UI renderiza bien.
+
+Si detectas una de estas señales: **detente, vuelve a la feature más reciente y ejecuta la Fase 4.5 ahora**. Retroactivo es aceptable; saltárselo NO.
+
+**Prerrequisito técnico:** el ciclo Build→Test→Fix de Fase 4 pasó ✓ y el dev server responde 200.
+
+### 4.5.1 Preparar contexto del Task call
+
+Identifica el tipo de feature recién implementada y elige el pattern apropiado de [references/qa-patterns.md](./references/qa-patterns.md):
+
+- Auth flow (login/register/protected route)
+- CRUD de un recurso
+- Form submit con validación
+- Navigation (menús, responsive)
+- Docs site (sidebar, search)
+
+Adapta el pattern al contexto real (rutas exactas, nombres de campos, recursos). Construye el input JSON:
+
+```json
+{
+  "baseUrl": "http://localhost:<PORT>",
+  "feature": "<descripción corta>",
+  "routes": ["<rutas recién implementadas>"],
+  "flows": [{ "name": "<flujo>", "steps": [...] }],
+  "stackId": "<stack del proyecto>",
+  "attemptNumber": 1
+}
 ```
 
-**Si el comando falla (no instalado):** instalar automáticamente antes de continuar:
-
-```bash
-npm install -g agent-browser
-agent-browser install
-```
-
-Informar al usuario: `"Instalando agent-browser para testing visual..."`.
-
-**Si la instalación falla** (permisos, red, entorno sin npm global): informar al usuario y **saltar esta fase**. No bloquear el flujo por esto.
-
-### 4.5.2 Abrir la app y tomar snapshot inicial
-
-```bash
-agent-browser open http://localhost:PORT
-agent-browser snapshot -i --json
-```
-
-Analizar el JSON retornado:
-
-| Qué verificar | Cómo detectarlo en el snapshot |
-|---------------|-------------------------------|
-| Título correcto | Campo `title` o elemento `<h1>` |
-| Estructura esperada | Presencia de nav, header, main, footer |
-| Errores visibles | Texto "Error", "Cannot read", pantalla en blanco |
-| Datos renderizados | Contenido de seed/mock aparece en elementos |
-| Hydration mismatch (Next/Nuxt) | Texto de error en el body o consola |
-
-Si hay errores visibles → fix → restart dev server → reintentar snapshot. Max 3 intentos.
-
-### 4.5.3 Verificar cada ruta implementada
-
-Para cada página/ruta que se desarrolló en este sprint:
-
-```bash
-agent-browser open http://localhost:PORT/ruta
-agent-browser snapshot -i --json
-```
-
-Verificar que carga sin errores y muestra el contenido esperado.
-
-### 4.5.4 Interacción con elementos (si aplica)
-
-Si hay formularios, botones o flujos interactivos, verificarlos usando las referencias `@eN` del snapshot:
-
-```bash
-# El snapshot retorna refs como @e1, @e2, etc. para cada elemento interactivo
-agent-browser click @eN                    # click en botón o link
-agent-browser snapshot -i --json           # capturar resultado
-
-# Para formularios:
-agent-browser fill @eN "valor de prueba"   # llenar campo
-agent-browser click @eN_submit             # enviar
-agent-browser snapshot -i --json           # verificar respuesta
-```
-
-Verificar que las interacciones producen el resultado esperado (navegación, feedback visual, estado actualizado).
-
-**Nota de seguridad:** Si la app maneja contenido externo (CMS, editor de texto, admin panel con datos de usuarios), usar `--content-boundaries` para prevenir prompt injection desde el contenido:
-
-```bash
-agent-browser snapshot -i --json --content-boundaries
-```
-
-### 4.5.5 Reportar resultado
-
-Al terminar, comunicar el resultado al usuario:
+### 4.5.2 Invocar grimox-qa
 
 ```
-🌐 Testing visual completado — http://localhost:PORT
-   Rutas verificadas: [N] páginas
-   Interacciones probadas: [formularios/botones si aplica]
-   Estado: ✔ Todo correcto
+Task(
+  subagent_type='grimox-qa',
+  prompt=<JSON del paso 4.5.1>
+)
 ```
 
-Si se encontraron y corrigieron issues: describir qué se encontró y cómo se solucionó.
+El sub-agent abrirá un browser **visible** (Playwright MCP con `headless=false`) y ejecutará los flows. El usuario ve la actividad en pantalla: clicks, formularios llenándose, navegación.
 
-### Reglas de esta fase
+### 4.5.3 Procesar el Task result
 
-- **No bloquear si agent-browser no está disponible.** Informar y continuar a Fase 5.
-- **Max 3 intentos por issue visual.** Si persiste después de 3 fixes, reportar al usuario con el snapshot actual y descripción del problema — no seguir en loop.
-- **Solo navegar a localhost.** No seguir links externos durante el testing.
-- **No depender del snapshot para lógica de negocio.** Esta fase detecta problemas visuales y de renderizado — la lógica ya fue verificada por curl en Fase 4.
+El QA retorna objeto estructurado con `pass`, `summary`, `routes_verified`, `flows_verified`, `issues` con `evidence` y `hypothesis`.
+
+**Si `pass === true`:**
+- Marcar [x] la feature en `GRIMOX_DEV_PLAN.md`.
+- Continuar con la siguiente feature (vuelve a Fase 3).
+
+**Si `pass === false`:**
+- Ir a paso 4.5.4 (auto-fix con límite).
+
+### 4.5.4 Auto-corrección (max 3 intentos por feature)
+
+El developer (TÚ) auto-corrige con la evidencia del QA. No bloquear por cada bug — solo escalar al usuario si tras 3 intentos no converge.
+
+```
+Intento 1:
+  1. Leer issues[].evidence.console.stack → ir al archivo:línea exacto del error
+  2. Leer issues[].evidence.network → confirmar si es front o back
+  3. Leer issues[].evidence.hypothesis → pista diagnóstica
+  4. Modificar el código mínimo necesario (Edit tool)
+  5. Re-invocar: Task(grimox-qa, { ...mismo contexto, attemptNumber: 2 })
+
+Intento 2:
+  Si sigue fallando, ampliar contexto: leer archivos relacionados,
+  revisar estado compartido, verificar .env, etc. Fix. Re-invocar.
+
+Intento 3:
+  Último intento. Si tampoco converge:
+  → Reportar al usuario con TODO el historial:
+    "Feature X no converge tras 3 fixes.
+     Intento 1: <qué cambié>, QA reportó: <resumen>
+     Intento 2: <qué cambié>, QA reportó: <resumen>
+     Intento 3: <qué cambié>, QA reportó: <resumen>
+     Último reporte QA: <evidence actual>
+     Mi hipótesis: <qué creo que pasa>
+     ¿Continúo con siguientes features marcando esta como KNOWN-FAIL,
+     o prefieres revisar conmigo antes de seguir?"
+```
+
+Registrar hallazgos en sección "QA Findings" de `GRIMOX_DEV_PLAN.md` (persiste entre sesiones).
+
+### 4.5.5 Fallback si grimox-qa no disponible
+
+Si el sub-agent `grimox-qa` no está registrado en el proyecto (proyecto viejo sin `.claude/agents/` o IDE no-Claude-Code sin Task tool):
+
+1. Intentar con `agent-browser` CLI (comandos anteriores).
+2. Si tampoco está: `npm install -g agent-browser && agent-browser install`.
+3. Si la instalación falla: informar al usuario y saltar a Fase 5 sin QA visual.
+4. En este modo degradado, TÚ mismo abres el browser, tomas snapshots, y haces el análisis (sin sub-agent separado).
+
+### 4.5.6 Stacks sin UI
+
+Para APIs puras (fastapi, nestjs, hono, fastify, springboot), Mobile (expo, flutter, flet-mobile), IoT y CLI: **skip esta fase completa**. La verificación con curl y tests unitarios de Fase 4 es suficiente.
+
+### Reglas de la Fase 4.5
+
+- **Invocar por feature**, no al final. El usuario ve progreso continuo.
+- **Browser visible** (headless=false) para que el usuario observe.
+- **Max 3 intentos de fix por feature.** Tras el 3º, ESCALAR al usuario — no seguir loopeando.
+- **NO modificar código del QA.** Tú haces los fixes con su reporte.
+- **Persistir hallazgos** en `GRIMOX_DEV_PLAN.md` sección QA Findings.
+- **Solo navegar a localhost.** No seguir links externos en testing.
 
 ---
 
 ## Fase 5: Verificación Final
 
 Después de implementar TODAS las fases, una verificación completa end-to-end.
+
+### Gate: auditoría de QA antes de verificar
+
+**Antes de ejecutar el checklist, audita tu propio trabajo:**
+
+```
+¿Invocaste Task(grimox-qa) al menos una vez durante el desarrollo?
+  ├─ SÍ → continúa al checklist
+  └─ NO →
+      ¿El proyecto tiene UI (web, SPA, docs, desktop web-based, fullstack desacoplado)?
+        ├─ SÍ → FASE 4.5 FUE OMITIDA. Esto es un BUG del flujo.
+        │       DETENTE. NO reportes "proyecto funcionando".
+        │       Ejecuta ahora la Fase 4.5 retroactiva: invoca grimox-qa
+        │       con las rutas críticas del plan completo. Si falla, auto-fix
+        │       hasta 3 intentos. Solo entonces vuelve a este gate.
+        └─ NO → skip limpio, documentarlo en el reporte final
+              ("QA visual no aplica para stack <nombre>")
+```
+
+No existe "estoy seguro de que funciona sin haberlo probado en browser". Si hay UI y no ejecutaste Task(grimox-qa), no terminaste.
 
 ### Checklist
 
@@ -421,12 +762,14 @@ Después de implementar TODAS las fases, una verificación completa end-to-end.
 3. **Datos reales:** Las rutas retornan datos (seed/mock), no strings vacíos o "TODO".
 4. **Docker (si aplica):** docker-compose up levanta todo, servicios se comunican entre sí.
 5. **Variables de entorno:** .env tiene todas las variables de .env.example con valores válidos.
-6. **Testing visual (si aplica):** Fase 4.5 completada — todas las rutas verificadas en browser, interacciones probadas, sin errores visuales.
+6. **QA visual completado (OBLIGATORIO si hay UI):** Fase 4.5 ejecutada al menos una vez. Al menos el auth flow + una ruta con datos fueron verificados en browser visible.
+7. **QA regresión final:** una última invocación a grimox-qa que valide TODAS las rutas del plan en un solo sweep.
 
 ### Reporte final
 
-Cuando todo pase, reporta al usuario:
+El reporte debe incluir **explícitamente** el estado del QA visual. Cualquiera de estos 3 formatos es aceptable:
 
+**Formato 1 — proyecto con UI, QA ejecutado:**
 ```
 ✔ Proyecto [nombre] funcionando correctamente
 
@@ -434,14 +777,43 @@ Stack: [framework] + [DB]
 Rutas implementadas: [N] páginas, [M] endpoints
 Puerto: localhost:[PORT]
 
-Para levantar:
-  [comando de dev]
-
-Para Docker:
-  docker-compose up
+QA visual: ✓ ejecutado
+  Invocaciones a grimox-qa: [N]
+  Flows verificados en browser: [login, CRUD crear/editar/borrar, ...]
+  Auto-fixes aplicados: [N de 3 intentos máx]
+  Evidencia: .grimox/qa-evidence/
 ```
 
-Actualiza GRIMOX_DEV_PLAN.md marcando todas las fases como completadas.
+**Formato 2 — stack sin UI:**
+```
+✔ Proyecto [nombre] funcionando correctamente
+
+Stack: [framework]
+Endpoints implementados: [M]
+Puerto: localhost:[PORT]
+
+QA visual: skippeado — no aplica para [stack tipo]
+Verificación: curl + tests HTTP en Fase 4
+```
+
+**Formato 3 — proyecto con UI pero grimox-qa no disponible (excepción rara):**
+```
+⚠ Proyecto [nombre] implementado con QA degradado
+
+Stack: [framework] + [DB]
+Rutas implementadas: [N]
+Puerto: localhost:[PORT]
+
+QA visual: NO ejecutado
+  Razón: [MCP de Playwright no aprobado | sub-agent no disponible | etc.]
+  Verificación usada: curl + WebFetch de HTML
+  RECOMENDACIÓN al usuario: aprobar MCPs y re-invocar /grimox-dev
+  para QA regresión, o probar manualmente en browser.
+```
+
+**Prohibido**: reportar formato 1 sin haber invocado grimox-qa. Si no lo invocaste, usa formato 3 con la razón específica — el usuario prefiere saber la verdad que recibir un "✓ funciona" no verificado.
+
+Actualiza GRIMOX_DEV_PLAN.md marcando todas las fases como completadas, y guarda las invocaciones de QA en la sección "QA Findings".
 
 ---
 
