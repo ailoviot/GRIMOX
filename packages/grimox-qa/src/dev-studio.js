@@ -32,7 +32,7 @@ export async function runDevStudio(opts = {}) {
 
     const framework = detectFrameworkCmd(cwd);
     if (!framework) {
-        console.error(pc.red('[grimox-dev-studio] No se detectó framework soportado en package.json'));
+        console.error(pc.red('[grimox-dev-studio] No supported framework detected in package.json'));
         console.error(pc.dim('Supported: Next.js, Nuxt, SvelteKit, Vite, Angular, Astro'));
         process.exit(1);
     }
@@ -43,11 +43,11 @@ export async function runDevStudio(opts = {}) {
     const finalArgs = [...framework.args, ...extraArgs];
 
     console.log(pc.magenta(pc.bold('\n🧪 Grimox Dev Studio')));
-    console.log(pc.dim(`   Framework: ${framework.name} · puerto esperado: ${framework.port}`));
+    console.log(pc.dim(`   Framework: ${framework.name} · expected port: ${framework.port}`));
     if (extraArgs.length > 0) {
-        console.log(pc.dim(`   Args extra: ${extraArgs.join(' ')}`));
+        console.log(pc.dim(`   Extra args: ${extraArgs.join(' ')}`));
     }
-    console.log(pc.dim(`   Iniciando dev server…\n`));
+    console.log(pc.dim(`   Starting dev server…\n`));
 
     // 1. Arrancar dev server del framework
     const devProc = spawn(framework.cmd, finalArgs, {
@@ -98,7 +98,7 @@ export async function runDevStudio(opts = {}) {
         browserLaunched = true;
 
         const baseUrl = `http://localhost:${actualPort}`;
-        console.log(pc.cyan(`\n[studio] Abriendo browser en ${baseUrl}`));
+        console.log(pc.cyan(`\n[studio] Opening browser at ${baseUrl}`));
 
         try {
             browser = await chromium.launch({
@@ -106,8 +106,8 @@ export async function runDevStudio(opts = {}) {
                 args: ['--disable-blink-features=AutomationControlled'],
             });
         } catch (err) {
-            console.error(pc.red('[studio] No se pudo lanzar Chromium:'), err.message);
-            console.error(pc.dim('        ¿Falta Chromium? Ejecuta: npx playwright install chromium'));
+            console.error(pc.red('[studio] Failed to launch Chromium:'), err.message);
+            console.error(pc.dim('        Chromium missing? Run: npx playwright install chromium'));
             return;
         }
 
@@ -120,10 +120,10 @@ export async function runDevStudio(opts = {}) {
 
         // Capturar errores del browser y enviarlos al stdout del LLM
         page.on('pageerror', (err) => {
-            console.log(pc.red(`[studio] Error en página: ${err.message}`));
+            console.log(pc.red(`[studio] Page error: ${err.message}`));
             updateStudioStatus(page, { status: 'error', mode: 'error' }).catch(() => {});
             showStudioToast(page, {
-                text: 'Error en runtime',
+                text: 'Runtime error',
                 path: err.message.slice(0, 80),
                 type: 'error',
                 durationMs: 4000,
@@ -156,33 +156,33 @@ export async function runDevStudio(opts = {}) {
         // Navegación inicial + overlays
         try {
             await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-            await injectStudioOverlays(page, { route: '/', status: 'listo' });
-            console.log(pc.green('[studio] Browser listo con overlays activos'));
+            await injectStudioOverlays(page, { route: '/', status: 'ready' });
+            console.log(pc.green('[studio] Browser ready with active overlays'));
         } catch (err) {
-            console.error(pc.red('[studio] Error al navegar:'), err.message);
+            console.error(pc.red('[studio] Navigation error:'), err.message);
         }
 
         // Reinyectar overlays en cada nueva navegación (framework client-side nav o full reload)
         page.on('framenavigated', async (frame) => {
             if (frame !== page.mainFrame()) return;
             const url = new URL(frame.url());
-            await injectStudioOverlays(page, { route: url.pathname, status: 'listo' });
+            await injectStudioOverlays(page, { route: url.pathname, status: 'ready' });
         });
 
         // 2. File watcher
         watcher = chokidarWatcher(chokidar.default || chokidar, cwd);
-        console.log(pc.cyan(`[studio] File watcher activo sobre src/**\n`));
+        console.log(pc.cyan(`[studio] File watcher active on src/**\n`));
 
         let debounceTimer = null;
         watcher.on('change', async (filePath) => {
             const rel = relative(cwd, filePath).replace(/\\/g, '/');
-            console.log(pc.dim(`[studio] cambio: ${rel}`));
+            console.log(pc.dim(`[studio] change: ${rel}`));
 
             // Actividad visible
             if (page && !page.isClosed()) {
                 updateStudioStatus(page, { status: 'compiling', mode: 'activity' }).catch(() => {});
                 showStudioToast(page, {
-                    text: 'Archivo modificado',
+                    text: 'File modified',
                     path: rel,
                     type: 'info',
                     durationMs: 2500,
@@ -209,9 +209,9 @@ export async function runDevStudio(opts = {}) {
                     // Flash verde suave tras HMR successful
                     await page.waitForTimeout(400);
                     await flashResult(page, 'pass').catch(() => {});
-                    await updateStudioStatus(page, { status: 'listo', mode: null });
+                    await updateStudioStatus(page, { status: 'ready', mode: null });
                 } catch (err) {
-                    console.log(pc.red(`[studio] error tras cambio: ${err.message}`));
+                    console.log(pc.red(`[studio] error after change: ${err.message}`));
                     await updateStudioStatus(page, { status: 'error', mode: 'error' }).catch(() => {});
                 }
             }, 600);
@@ -220,9 +220,9 @@ export async function runDevStudio(opts = {}) {
         watcher.on('add', (filePath) => {
             const rel = relative(cwd, filePath).replace(/\\/g, '/');
             if (page && !page.isClosed() && (rel.endsWith('.tsx') || rel.endsWith('.ts') || rel.endsWith('.vue') || rel.endsWith('.svelte'))) {
-                console.log(pc.dim(`[studio] nuevo archivo: ${rel}`));
+                console.log(pc.dim(`[studio] new file: ${rel}`));
                 showStudioToast(page, {
-                    text: 'Archivo nuevo',
+                    text: 'New file',
                     path: rel,
                     type: 'success',
                     durationMs: 2000,
@@ -233,7 +233,7 @@ export async function runDevStudio(opts = {}) {
 
     // Handle browser cerrado por el usuario
     process.on('SIGINT', async () => {
-        console.log(pc.dim('\n[studio] Cerrando…'));
+        console.log(pc.dim('\n[studio] Shutting down…'));
         await cleanup();
         process.exit(0);
     });

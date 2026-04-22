@@ -1,10 +1,14 @@
 /**
- * Banner mostrado tras `npm install` en proyectos Grimox.
+ * Banner shown after `npm install` in Grimox projects.
  *
- * Este mensaje lo ve el LLM (y el humano) en el output de npm. Sirve como
- * recordatorio ultra-visible de la regla #1 del proyecto: para arrancar
- * desarrollo, usar `npm run dev` y NUNCA `npx next dev` u otro comando que
- * salte el Dev Studio.
+ * This message is seen by the LLM (and human) in the npm output. It acts as
+ * an ultra-visible reminder of the project's rule #1: to start development,
+ * use `npm run dev` and NEVER `npx next dev` or any other command that
+ * bypasses Dev Studio.
+ *
+ * English-only by design: this banner is shown to any user on any machine
+ * regardless of language preference, so it stays in English for universal
+ * comprehension.
  */
 
 const RESET = '\x1b[0m';
@@ -17,21 +21,21 @@ const GREEN = '\x1b[32m';
 
 export default `
 ${MAGENTA}${BOLD}╔══════════════════════════════════════════════════════════════════╗${RESET}
-${MAGENTA}${BOLD}║${RESET}  ${CYAN}${BOLD}🧪 GRIMOX DEV STUDIO — INSTALADO${RESET}                              ${MAGENTA}${BOLD}║${RESET}
+${MAGENTA}${BOLD}║${RESET}  ${CYAN}${BOLD}🧪 GRIMOX DEV STUDIO — INSTALLED${RESET}                              ${MAGENTA}${BOLD}║${RESET}
 ${MAGENTA}${BOLD}╠══════════════════════════════════════════════════════════════════╣${RESET}
 ${MAGENTA}${BOLD}║${RESET}                                                                  ${MAGENTA}${BOLD}║${RESET}
-${MAGENTA}${BOLD}║${RESET}  ${GREEN}Para ARRANCAR desarrollo:${RESET}  ${BOLD}npm run dev${RESET}                        ${MAGENTA}${BOLD}║${RESET}
-${MAGENTA}${BOLD}║${RESET}  ${GREEN}Con puerto custom:${RESET}         ${BOLD}npm run dev -- -p 3100${RESET}             ${MAGENTA}${BOLD}║${RESET}
+${MAGENTA}${BOLD}║${RESET}  ${GREEN}To START development:${RESET}      ${BOLD}npm run dev${RESET}                        ${MAGENTA}${BOLD}║${RESET}
+${MAGENTA}${BOLD}║${RESET}  ${GREEN}With custom port:${RESET}          ${BOLD}npm run dev -- -p 3100${RESET}             ${MAGENTA}${BOLD}║${RESET}
 ${MAGENTA}${BOLD}║${RESET}                                                                  ${MAGENTA}${BOLD}║${RESET}
-${MAGENTA}${BOLD}║${RESET}  ${YELLOW}⚠  NUNCA uses npx next dev, next dev, vite directamente${RESET}       ${MAGENTA}${BOLD}║${RESET}
-${MAGENTA}${BOLD}║${RESET}  ${YELLOW}⚠  Para puerto custom: npm run dev -- -p XXXX${RESET}                 ${MAGENTA}${BOLD}║${RESET}
-${MAGENTA}${BOLD}║${RESET}  ${YELLOW}⚠  SOLO npm run dev abre el browser visible${RESET}                   ${MAGENTA}${BOLD}║${RESET}
+${MAGENTA}${BOLD}║${RESET}  ${YELLOW}⚠  NEVER use npx next dev, next dev, or vite directly${RESET}         ${MAGENTA}${BOLD}║${RESET}
+${MAGENTA}${BOLD}║${RESET}  ${YELLOW}⚠  For a custom port: npm run dev -- -p XXXX${RESET}                  ${MAGENTA}${BOLD}║${RESET}
+${MAGENTA}${BOLD}║${RESET}  ${YELLOW}⚠  ONLY npm run dev opens the visible browser${RESET}                ${MAGENTA}${BOLD}║${RESET}
 ${MAGENTA}${BOLD}║${RESET}                                                                  ${MAGENTA}${BOLD}║${RESET}
-${MAGENTA}${BOLD}║${RESET}  ${DIM}Cuando arranques npm run dev:${RESET}                                 ${MAGENTA}${BOLD}║${RESET}
-${MAGENTA}${BOLD}║${RESET}  ${DIM}  • dev server del framework inicia${RESET}                            ${MAGENTA}${BOLD}║${RESET}
-${MAGENTA}${BOLD}║${RESET}  ${DIM}  • Chromium se abre automáticamente (visible)${RESET}                 ${MAGENTA}${BOLD}║${RESET}
-${MAGENTA}${BOLD}║${RESET}  ${DIM}  • overlays animados + file watcher se activan${RESET}                ${MAGENTA}${BOLD}║${RESET}
-${MAGENTA}${BOLD}║${RESET}  ${DIM}  • el usuario ve todo en tiempo real${RESET}                          ${MAGENTA}${BOLD}║${RESET}
+${MAGENTA}${BOLD}║${RESET}  ${DIM}When you run npm run dev:${RESET}                                     ${MAGENTA}${BOLD}║${RESET}
+${MAGENTA}${BOLD}║${RESET}  ${DIM}  • framework dev server starts${RESET}                                ${MAGENTA}${BOLD}║${RESET}
+${MAGENTA}${BOLD}║${RESET}  ${DIM}  • Chromium opens automatically (visible)${RESET}                     ${MAGENTA}${BOLD}║${RESET}
+${MAGENTA}${BOLD}║${RESET}  ${DIM}  • animated overlays + file watcher activate${RESET}                  ${MAGENTA}${BOLD}║${RESET}
+${MAGENTA}${BOLD}║${RESET}  ${DIM}  • you see everything in real time${RESET}                            ${MAGENTA}${BOLD}║${RESET}
 ${MAGENTA}${BOLD}║${RESET}                                                                  ${MAGENTA}${BOLD}║${RESET}
 ${MAGENTA}${BOLD}╚══════════════════════════════════════════════════════════════════╝${RESET}
 `;

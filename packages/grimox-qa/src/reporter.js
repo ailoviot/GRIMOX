@@ -41,20 +41,20 @@ export function summary({ passed, failed, total, escalated }) {
     console.log(pc.dim('─'.repeat(64)));
 
     if (escalated.length > 0) {
-        console.log(pc.red(pc.bold(`\n⚠  ESCALATION — ${escalated.length} flow(s) fallaron 3 veces consecutivas:`)));
+        console.log(pc.red(pc.bold(`\n⚠  ESCALATION — ${escalated.length} flow(s) failed 3 times in a row:`)));
         for (const name of escalated) {
             console.log(pc.red(`   · ${name}`));
         }
-        console.log(pc.dim(`\n   Requiere intervención manual. Reset con: grimox-qa --reset`));
+        console.log(pc.dim(`\n   Manual intervention required. Reset with: grimox-qa --reset`));
         console.log(pc.dim(`   Exit code: 2`));
         return;
     }
 
     if (failed === 0) {
-        console.log(pc.green(pc.bold(`✓ QA pasó — ${passed}/${total} flows`)));
+        console.log(pc.green(pc.bold(`✓ QA passed — ${passed}/${total} flows`)));
     } else {
-        console.log(pc.red(pc.bold(`✗ QA falló — ${failed}/${total} flows`)));
-        console.log(pc.dim(`  Revisa la evidencia en .grimox/qa-evidence/`));
+        console.log(pc.red(pc.bold(`✗ QA failed — ${failed}/${total} flows`)));
+        console.log(pc.dim(`  See evidence in .grimox/qa-evidence/`));
         console.log(pc.dim(`  Exit code: 1`));
     }
 }

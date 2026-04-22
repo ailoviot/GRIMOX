@@ -275,17 +275,17 @@ function stepDescription(step) {
 function inferHypothesis(err, consoleErrors, networkErrors) {
     const msg = err.message.toLowerCase();
     if (msg.includes('timeout') && consoleErrors.length > 0) {
-        return `Posible error JS en consola — revisa: ${consoleErrors.at(-1)?.slice(0, 80)}`;
+        return `Possible JS error in console — check: ${consoleErrors.at(-1)?.slice(0, 80)}`;
     }
     if (networkErrors.length > 0) {
         const ne = networkErrors.at(-1);
-        if (ne.includes('500')) return `Backend retornó 500 — revisa server action o API handler`;
-        if (ne.includes('401')) return `401 en request — falta auth o token inválido`;
-        if (ne.includes('403')) return `403 en request — RLS o permisos`;
-        if (ne.includes('404')) return `Endpoint no existe — verifica ruta`;
+        if (ne.includes('500')) return `Backend returned 500 — check server action or API handler`;
+        if (ne.includes('401')) return `401 in request — missing auth or invalid token`;
+        if (ne.includes('403')) return `403 in request — RLS or permissions`;
+        if (ne.includes('404')) return `Endpoint does not exist — check route`;
     }
     if (msg.includes('locator')) {
-        return `Selector no encontrado — verifica que el elemento se renderiza`;
+        return `Selector not found — verify the element is rendered`;
     }
     return null;
 }

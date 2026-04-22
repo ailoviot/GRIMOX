@@ -101,12 +101,12 @@ const STANDBY_HTML = `<!DOCTYPE html>
 <div class="hero">
   <div class="logo">🧪</div>
   <h1>Grimox Dev Studio</h1>
-  <p class="sub">El daemon está vivo. Esperando a que arranques el dev server…</p>
+  <p class="sub">The daemon is alive. Waiting for you to start the dev server…</p>
   <div class="card">
-    <p style="color:#c9c0e0">Cuando ejecutes:</p>
+    <p style="color:#c9c0e0">When you run:</p>
     <div class="hint">npm run dev</div>
     <p style="margin-top:20px;color:#a99ac8;font-size:14px">
-      Navegaré automáticamente a tu app con animaciones en tiempo real
+      I'll navigate to your app automatically with live animations
     </p>
     <div class="dots"><span></span><span></span><span></span></div>
   </div>
@@ -169,7 +169,7 @@ export class BrowserManager {
             await this.page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
         } catch {}
 
-        await injectStudioOverlays(this.page, { route: '/', status: 'listo' });
+        await injectStudioOverlays(this.page, { route: '/', status: 'ready' });
         this._registerPageHandlers();
     }
 
@@ -192,8 +192,8 @@ export class BrowserManager {
                 // Inject es idempotente (skip si ya existe). Tras navegar desde
                 // standby (/standby) a la app real, el banner ya existe pero con
                 // el route viejo — updateStudioStatus lo refresca.
-                await injectStudioOverlays(this.page, { route: url.pathname, status: 'listo' });
-                await updateStudioStatus(this.page, { route: url.pathname, status: 'listo', mode: null });
+                await injectStudioOverlays(this.page, { route: url.pathname, status: 'ready' });
+                await updateStudioStatus(this.page, { route: url.pathname, status: 'ready', mode: null });
             } catch {}
         });
 
@@ -201,7 +201,7 @@ export class BrowserManager {
             if (this.takenOver) return;
             await updateStudioStatus(this.page, { status: 'error', mode: 'error' }).catch(() => {});
             await showStudioToast(this.page, {
-                text: 'Error en runtime',
+                text: 'Runtime error',
                 path: err.message.slice(0, 80),
                 type: 'error',
                 durationMs: 4000,
@@ -242,7 +242,7 @@ export class BrowserManager {
         this.baseUrl = null;
 
         await this.page.setContent(STANDBY_HTML);
-        await injectStudioOverlays(this.page, { route: '/standby', status: 'esperando dev server' });
+        await injectStudioOverlays(this.page, { route: '/standby', status: 'waiting for dev server' });
 
         this._registerPageHandlers();
     }
@@ -272,7 +272,7 @@ export class BrowserManager {
         const main = events.find((e) => e.type === 'change') || events[0];
         if (main) {
             await showStudioToast(this.page, {
-                text: main.type === 'add' ? 'Archivo nuevo' : main.type === 'unlink' ? 'Archivo eliminado' : 'Archivo modificado',
+                text: main.type === 'add' ? 'New file' : main.type === 'unlink' ? 'File deleted' : 'File modified',
                 path: main.path,
                 type: main.type === 'add' ? 'success' : 'info',
                 durationMs: 2500,
@@ -299,7 +299,7 @@ export class BrowserManager {
         // Tras el cambio, restaurar status a listo + flash verde sutil
         await this.page.waitForTimeout(800).catch(() => {});
         await flashResult(this.page, 'pass').catch(() => {});
-        await updateStudioStatus(this.page, { status: 'listo', mode: null }).catch(() => {});
+        await updateStudioStatus(this.page, { status: 'ready', mode: null }).catch(() => {});
     }
 
     getCdpInfo() {

@@ -19,13 +19,13 @@ export async function runDaemon(opts = {}) {
     const cwd = process.cwd();
 
     if (isDaemonAlive()) {
-        console.log(pc.dim('[grimox-daemon] ya hay un daemon corriendo en este proyecto'));
+        console.log(pc.dim('[grimox-daemon] a daemon is already running in this project'));
         process.exit(0);
     }
 
     console.log(pc.magenta(pc.bold('🧪 Grimox Daemon')));
     console.log(pc.dim(`   cwd: ${cwd}`));
-    console.log(pc.dim(`   Monitoreando puertos de dev server y cambios de archivos…`));
+    console.log(pc.dim(`   Watching dev server ports and file changes…`));
 
     writePidFile(process.pid);
 
@@ -50,12 +50,12 @@ export async function runDaemon(opts = {}) {
         onFound: async (port) => {
             currentBaseUrl = `http://localhost:${port}`;
             lastServerSeenAt = Date.now();
-            console.log(pc.cyan(`[daemon] dev server detectado en :${port}`));
+            console.log(pc.cyan(`[daemon] dev server detected on :${port}`));
             try {
                 await browserMgr.ensure(currentBaseUrl);
-                console.log(pc.green(`[daemon] browser activo con overlays`));
+                console.log(pc.green(`[daemon] browser active with overlays`));
             } catch (err) {
-                console.error(pc.red(`[daemon] error lanzando browser: ${err.message}`));
+                console.error(pc.red(`[daemon] failed to launch browser: ${err.message}`));
             }
         },
     });
@@ -90,12 +90,12 @@ export async function runDaemon(opts = {}) {
 
     // Modo standby: abrir browser inmediatamente con overlays (útil para demo/test)
     if (opts.standby) {
-        console.log(pc.cyan('[daemon] modo STANDBY — abriendo browser con overlays…'));
+        console.log(pc.cyan('[daemon] STANDBY mode — opening browser with overlays…'));
         try {
             await browserMgr.openStandby();
-            console.log(pc.green('[daemon] browser standby activo — esperando dev server'));
+            console.log(pc.green('[daemon] standby browser active — waiting for dev server'));
         } catch (err) {
-            console.error(pc.red(`[daemon] error abriendo browser standby: ${err.message}`));
+            console.error(pc.red(`[daemon] failed to open standby browser: ${err.message}`));
         }
     }
 
@@ -109,7 +109,7 @@ export async function runDaemon(opts = {}) {
         // (2) Browser dead check
         const browserDead = browserMgr.browser && !browserMgr.browser.isConnected?.();
         if (browserDead && !browserMgr.takenOver) {
-            console.log(pc.dim('[daemon] browser cerrado externamente — auto-kill'));
+            console.log(pc.dim('[daemon] browser closed externally — auto-kill'));
             cleanup(0);
             return;
         }
@@ -117,7 +117,7 @@ export async function runDaemon(opts = {}) {
         // (1) Idle timeout
         if (!currentBaseUrl) {
             if (Date.now() - lastServerSeenAt > IDLE_TIMEOUT_MS) {
-                console.log(pc.dim('[daemon] sin actividad > 15min — auto-kill'));
+                console.log(pc.dim('[daemon] no activity > 15min — auto-kill'));
                 cleanup(0);
             }
         } else {

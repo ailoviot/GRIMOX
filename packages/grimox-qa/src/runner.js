@@ -28,7 +28,7 @@ import { ipcRequest } from './daemon/ipc-server.js';
 export async function runQA(args) {
     if (args.reset) {
         resetAttempts();
-        report.info('Contador de intentos reseteado (.grimox/attempts.json)');
+        report.info('Attempt counter reset (.grimox/attempts.json)');
     }
 
     const config = loadConfig(args);
@@ -55,19 +55,19 @@ export async function runQA(args) {
             timeoutMs: 30000,
         });
         if (!result) {
-            report.warn(`No pude arrancar production server automático en :${args.autoServerPort}`);
-            report.warn(`Intenta: npm run start && grimox-qa --url=http://localhost:${args.autoServerPort}`);
+            report.warn(`Could not start auto production server on :${args.autoServerPort}`);
+            report.warn(`Try: npm run start && grimox-qa --url=http://localhost:${args.autoServerPort}`);
             return 1;
         }
         autoServerProc = result.proc;
         config.baseUrl = `http://localhost:${args.autoServerPort}`;
-        report.info(`Production server temporal vivo en ${config.baseUrl}`);
+        report.info(`Temporary production server alive at ${config.baseUrl}`);
         serverOk = true;
     }
 
     if (!serverOk) {
-        report.warn(`Server no responde en ${config.baseUrl}`);
-        report.warn(`Arranca el server con: npm run dev  (o pasa --auto-server)`);
+        report.warn(`Server not responding at ${config.baseUrl}`);
+        report.warn(`Start the server with: npm run dev  (or pass --auto-server)`);
         return 1;
     }
 
@@ -76,7 +76,7 @@ export async function runQA(args) {
     if (config.autoDiscover) {
         routes = discoverRoutes();
         if (routes.length > 0) {
-            report.info(`${routes.length} rutas descubiertas automáticamente`);
+            report.info(`${routes.length} routes auto-discovered`);
         }
     }
 
@@ -106,7 +106,7 @@ export async function runQA(args) {
                     if (daemonBrowser) {
                         daemonContext = daemonBrowser.contexts()[0] || await daemonBrowser.newContext();
                         await ipcRequest('TAKE_OVER', {}, { timeoutMs: 1000 });
-                        report.info(`Reusando browser del daemon (CDP ${daemonInfo.port}, intento ${attempt})`);
+                        report.info(`Reusing daemon browser (CDP ${daemonInfo.port}, attempt ${attempt})`);
                         break;
                     }
                 }
@@ -118,7 +118,7 @@ export async function runQA(args) {
             }
         }
         if (!daemonContext) {
-            report.info('Daemon no respondió en 3s — usando browser propio');
+            report.info('Daemon did not respond in 3s — using own browser');
         }
     }
 
@@ -233,7 +233,7 @@ export async function runQA(args) {
     // Matar production server temporal si lo arrancamos
     if (autoServerProc) {
         try {
-            report.info('Apagando production server temporal…');
+            report.info('Shutting down temporary production server…');
             autoServerProc.kill('SIGTERM');
             // En Windows, SIGTERM no siempre funciona — force kill tras 2s
             setTimeout(() => {
@@ -260,11 +260,11 @@ export async function runQA(args) {
 async function startAutoServer({ port, cmd, timeoutMs }) {
     const resolvedCmd = cmd || detectStartCmd(port);
     if (!resolvedCmd) {
-        report.warn('No pude detectar comando de start — pasa --auto-server-cmd="<tu comando>"');
+        report.warn('Could not detect start command — pass --auto-server-cmd="<your command>"');
         return null;
     }
 
-    report.info(`Arrancando production server: ${resolvedCmd}`);
+    report.info(`Starting production server: ${resolvedCmd}`);
 
     const isWin = process.platform === 'win32';
     const shell = isWin ? 'cmd.exe' : 'sh';
@@ -290,7 +290,7 @@ async function startAutoServer({ port, cmd, timeoutMs }) {
 
     proc.on('exit', (code) => {
         if (code !== null && code !== 0) {
-            report.warn(`Production server salió con código ${code}`);
+            report.warn(`Production server exited with code ${code}`);
         }
     });
 
@@ -476,7 +476,7 @@ async function runFlowWithRetry(context, config, flow, args, meta = {}) {
         }
 
         if (attempt < args.retries + 1) {
-            report.info(`Flow "${flow.name}" falló (intento ${attempt}), reintentando...`);
+            report.info(`Flow "${flow.name}" failed (attempt ${attempt}), retrying...`);
         }
     }
 
