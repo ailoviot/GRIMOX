@@ -144,3 +144,7 @@ vite.config.ts.timestamp-*
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude Code per-user local settings (permissions, UI prefs).
+# The shared project config lives in .claude/settings.json and IS tracked.
+.claude/settings.local.json
