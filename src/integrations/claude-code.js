@@ -615,7 +615,13 @@ Lee solo lo necesario:
 1. \`GRIMOX.md\` — stack, convenciones, reglas de seguridad
 2. \`.ai/rules.md\` o \`.cursorrules\` — best practices del framework
 3. \`package.json\` — scripts y deps disponibles
-4. \`.mcp.json\` — **qué MCP servers tienes** (DB, filesystem, browser). Si hay uno de DB (supabase, postgres, mongodb…), **úsalo** para crear schema y seed data, no pidas al usuario que corra SQL manualmente.
+4. \`.mcp.json\` + \`.mcp/README.md\` — **qué MCP servers tienes** y qué capacidades reales. El README documenta cada MCP con su capability (write ✓ o read-only ⚠). Patrón de decisión para setup de DB:
+
+   - **MCP write capable** (Supabase Cloud, MongoDB, Firebase, Redis) → úsalo directo para crear schema y sembrar data.
+   - **MCP read-only** (PostgreSQL oficial, Turso, Supabase self-hosted vía postgres): úsalo para queries SELECT, pero para crear/migrar haz un **script Node con el SDK del proyecto** (\`pg\`, \`@libsql/client\`, \`@supabase/supabase-js\`). Ejecútalo con \`node --env-file=.env scripts/migrate.mjs\`.
+   - **Sin MCP disponible** (Oracle, Insforge): usa el SDK directamente en un script.
+
+   **NUNCA pidas al usuario que copie-pegue SQL en un dashboard manualmente** — siempre hay una opción programática (MCP o SDK).
 5. \`.grimox/qa-plan.yml\` — plan de QA (lo editarás después)
 6. \`src/lib/\`, \`src/app/\` — qué hay ya escrito (cliente de DB, middleware, helpers). **Reutiliza, no reescribas.**
 

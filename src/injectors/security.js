@@ -37,7 +37,12 @@ function getEnvExample(config) {
                 // SERVICE_ROLE_KEY SOLO en servidor — sin prefijo de cliente
                 content += `${clientPrefix}SUPABASE_URL=https://your-project.supabase.co\n`;
                 content += `${clientPrefix}SUPABASE_ANON_KEY=your-anon-key\n`;
-                content += `SUPABASE_SERVICE_ROLE_KEY=your-service-role-key  # servidor únicamente\n`;
+                content += `SUPABASE_SERVICE_ROLE_KEY=your-service-role-key  # server only\n`;
+                content += `\n# Supabase MCP (for the AI agent to manage tables/migrations)\n`;
+                content += `# Get from: https://supabase.com/dashboard/account/tokens\n`;
+                content += `# Only for Supabase Cloud. Self-hosted users: leave empty and the\n`;
+                content += `# AI will use SUPABASE_SERVICE_ROLE_KEY with scripts instead.\n`;
+                content += `SUPABASE_ACCESS_TOKEN=your-personal-access-token\n`;
                 break;
             case 'postgresql':
                 content += `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/app\n`;
@@ -46,6 +51,11 @@ function getEnvExample(config) {
                 content += `FIREBASE_API_KEY=your-api-key\n`;
                 content += `FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com\n`;
                 content += `FIREBASE_PROJECT_ID=your-project-id\n`;
+                content += `\n# Firebase MCP (for the AI agent)\n`;
+                content += `# Download service account JSON from: Firebase Console → Project\n`;
+                content += `# Settings → Service accounts → Generate new private key\n`;
+                content += `FIREBASE_SERVICE_ACCOUNT_PATH=/absolute/path/to/serviceAccountKey.json\n`;
+                content += `FIREBASE_STORAGE_BUCKET=your-project-id.firebasestorage.app\n`;
                 break;
             case 'mongodb':
                 content += `MONGODB_URI=mongodb://localhost:27017/app\n`;
