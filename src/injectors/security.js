@@ -70,8 +70,18 @@ function getEnvExample(config) {
                 content += `TURSO_AUTH_TOKEN=your-auth-token\n`;
                 break;
             case 'insforge':
-                content += `INSFORGE_URL=https://your-project.insforge.dev\n`;
+                content += `# InsForge project credentials. Get from your InsForge dashboard:\n`;
+                content += `#   Connect Project → API Keys tab (or Connection String tab)\n`;
+                content += `INSFORGE_PROJECT_ID=your-project-id\n`;
                 content += `INSFORGE_API_KEY=your-api-key\n`;
+                content += `INSFORGE_API_BASE_URL=https://api.insforge.dev\n`;
+                content += `\n# Optional — PostgreSQL direct connection (InsForge runs on Postgres)\n`;
+                content += `# Useful if you prefer pg / Drizzle / Prisma over the InsForge SDK.\n`;
+                content += `# Get from: Connect Project → Connection String tab\n`;
+                content += `# DATABASE_URL=postgresql://postgres:password@host.database.insforge.app:5432/insforge?sslmode=require\n`;
+                content += `\n# The InsForge MCP (https://mcp.insforge.dev/mcp) uses credentials from:\n`;
+                content += `#   npx @insforge/cli link --project-id \${INSFORGE_PROJECT_ID}\n`;
+                content += `# Run that once to authorize the MCP against your project.\n`;
                 break;
             case 'redis':
                 content += `REDIS_URL=redis://localhost:6379\n`;

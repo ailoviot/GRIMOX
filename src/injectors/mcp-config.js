@@ -155,9 +155,26 @@ function buildMcpReadme(config) {
             break;
 
         case 'insforge':
-            content += `## insforge — ⚠ sin MCP disponible\n\n`;
-            content += `Insforge no tiene MCP server. El LLM debe usar el SDK oficial de\n`;
-            content += `Insforge directamente en scripts para crear/migrar schema.\n\n`;
+            content += `## insforge — InsForge MCP (HTTP remoto)\n\n`;
+            content += `**Write capable ✓** — el MCP oficial de InsForge.\n\n`;
+            content += `A diferencia de otros MCPs, éste NO es un paquete npm local: es un\n`;
+            content += `servidor HTTP remoto en \`https://mcp.insforge.dev/mcp\`. El injector ya\n`;
+            content += `generó la entrada correcta en \`.mcp.json\` con \`type: "http"\`.\n\n`;
+            content += `### Vincular el proyecto\n\n`;
+            content += `La URL HTTP es común para todos los proyectos de InsForge. Para que el\n`;
+            content += `MCP sepa a cuál apuntar, corre **una sola vez** el CLI oficial:\n\n`;
+            content += `\`\`\`bash\nnpx @insforge/cli link --project-id <TU_PROJECT_ID>\n\`\`\`\n\n`;
+            content += `Obtén el \`PROJECT_ID\` desde tu dashboard de InsForge:\n`;
+            content += `**Connect Project → CLI tab** (viene pre-llenado en el comando).\n\n`;
+            content += `Tras el \`link\`, el MCP ya puede crear tablas, insertar y gestionar\n`;
+            content += `Storage en tu proyecto InsForge sin intervención manual.\n\n`;
+            content += `### Protocolos alternativos disponibles\n\n`;
+            content += `InsForge también expone (ver dashboard → Connect Project):\n`;
+            content += `- **Connection String** (PostgreSQL directo — InsForge corre sobre Postgres)\n`;
+            content += `- **API Keys** — para acceso programático HTTP\n`;
+            content += `- **CLI** — \`@insforge/cli\` para operaciones administrativas\n\n`;
+            content += `El LLM prefiere el MCP (más ergonómico que fetch), pero puede caer a\n`;
+            content += `connection string + \`pg\` si el MCP falla en algún entorno.\n\n`;
             break;
     }
 
@@ -178,17 +195,21 @@ function buildMcpReadme(config) {
  * Inyecta el MCP server adecuado por motor de DB. Cada MCP tiene su propia
  * convención (args vs env, write vs read-only, cloud vs self-hosted).
  *
- * Estado verificado contra npm registry (abril 2026):
+ * Estado verificado contra npm registry y docs oficiales (abril 2026):
  *
- *   Supabase Cloud  → @supabase/mcp-server-supabase  (write ✓)
+ *   Supabase Cloud  → @supabase/mcp-server-supabase  (write ✓, stdio npx)
  *   Supabase self-h → postgres MCP como fallback     (read-only ⚠)
  *   PostgreSQL      → @modelcontextprotocol/server-postgres (read-only ⚠)
  *   MongoDB         → mcp-mongo-server (community)   (write ✓)
  *   Firebase        → @gannonh/firebase-mcp (community) (write ✓)
  *   Turso           → mcp-turso (community)          (read-only ⚠)
  *   Redis           → @modelcontextprotocol/server-redis (write ✓)
+ *   Insforge        → https://mcp.insforge.dev/mcp   (write ✓, HTTP remoto)
  *   Oracle          → sin MCP oficial                (el LLM usa SDK)
- *   Insforge        → sin MCP                        (el LLM usa SDK)
+ *
+ * Dos protocolos de transporte:
+ *   - stdio: `command` + `args` (npx ...). Default para la mayoría.
+ *   - HTTP remoto: `type: 'http'` + `url`. InsForge usa esto.
  *
  * Para MCPs read-only, el LLM crea schema/seed vía un script Node usando
  * el SDK del proyecto (documentado en .mcp/README.md inyectado al lado).
@@ -258,10 +279,19 @@ function addDatabaseServers(mcpConfig, config) {
             command: 'npx',
             args: ['-y', '@modelcontextprotocol/server-redis', '${REDIS_URL}'],
         };
+    } else if (db === 'insforge') {
+        // InsForge MCP es un servidor HTTP remoto (no un paquete npm local).
+        // La URL es común para todos los proyectos; el vínculo con el proyecto
+        // específico se hace vía `npx @insforge/cli link --project-id <id>`,
+        // que almacena credenciales localmente usadas por el MCP.
+        // Docs: https://docs.insforge.dev/mcp-setup
+        mcpConfig.mcpServers['insforge'] = {
+            type: 'http',
+            url: 'https://mcp.insforge.dev/mcp',
+        };
     }
-    // Oracle / Insforge: no MCP disponible — el LLM usa el SDK del proyecto
-    // (oracledb / SDK Insforge) directamente en scripts de setup. Documentado
-    // en .mcp/README.md.
+    // Oracle: no hay MCP oficial ni community maduro — el LLM usa el SDK
+    // oracledb directamente en scripts de setup. Documentado en .mcp/README.md.
 }
 
 /**
