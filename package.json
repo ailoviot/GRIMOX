@@ -20,6 +20,8 @@
         "dev": "node bin/grimox.js",
         "test": "vitest",
         "lint": "eslint src/",
+        "grimox:help": "node scripts/grimox-help.mjs",
+        "qa:pack": "node scripts/pack-qa.mjs",
         "prepublishOnly": "npm run lint"
     },
     "repository": {

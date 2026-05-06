@@ -45,6 +45,9 @@ $ grimox create crm-lab
 
   ✔ Project ready for development
 
+  ◇ Open crm-lab in a new IDE window? (Y/n)
+  │  (only asked if Grimox detects an IDE open in a parent folder)
+
   cd crm-lab && npm install && npm run dev
 ```
 
@@ -82,6 +85,7 @@ $ grimox create crm-lab
 | Security | .env validation + CSP + CORS + security headers |
 | AI Skills | Universal skills for any LLM (dev, migrate, docs) |
 | MCP Config | Model Context Protocol server configuration |
+| Help cheatsheet | `npm run grimox:help` from inside any generated project — colored summary of all available scripts, daemon commands, common workflows, and PowerShell tips |
 | UI/UX | Tailwind CSS v4 + component library + dark mode |
 | Database | Connection, ORM config, schemas, env vars (with correct framework prefixes like `NEXT_PUBLIC_*` / `PUBLIC_*` / `VITE_*`) |
 | **Grimox Dev Studio** | Persistent browser daemon + visual QA pipeline (see below) |

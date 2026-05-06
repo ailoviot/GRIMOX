@@ -4,6 +4,7 @@ import pc from 'picocolors';
 import { writeFileSafe, ensureDir, copyDir } from '../utils/fs-helpers.js';
 import { createLLMClient } from './llm-client.js';
 import { analyzeProject, generateSmartMigrationSteps, generateCodemods } from './code-analyzer.js';
+import { inject as injectQACli } from '../injectors/qa-cli.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -47,8 +48,74 @@ export async function migrate(config, options = {}) {
         const results = await applyCodemods(projectPath, config, analysis, llmClient);
         spinner.stop(`Transformaciones aplicadas: ${results.applied}/${results.total} archivos`);
 
+        // Inyectar grimox-qa al proyecto migrado (mismo flujo que `grimox create`).
+        // Solo si el stack destino tiene UI. Try/catch silencioso: si falla,
+        // la migración sigue exitosa — la inyección de QA es bonus, no requisito.
+        try {
+            const qaConfig = adaptMigrateConfigForQA(config);
+            if (qaConfig) {
+                spinner.start('Inyectando grimox-qa (QA visual)...');
+                await injectQACli(projectPath, qaConfig);
+                spinner.stop('grimox-qa inyectado (npm run dev abrirá browser visible con overlays)');
+            }
+        } catch (err) {
+            logger.warn(`grimox-qa no se pudo inyectar (la migración sigue OK): ${err.message}`);
+        }
+
         displayApplyResult(config, results);
     }
+}
+
+/**
+ * Adapta el config de migración (con `migrations[]`) al shape que espera
+ * el inyector qa-cli (que viene del flujo `grimox create`: { isDecoupled,
+ * stackId, database, ... }).
+ *
+ * Retorna null si la migración no produce un stack con UI o si no hay
+ * targetStackId — en ese caso saltamos la inyección sin error.
+ */
+function adaptMigrateConfigForQA(config) {
+    const migs = config.migrations || [];
+    if (migs.length === 0) return null;
+
+    if (migs.length === 1) {
+        const m = migs[0];
+        if (!m.targetStackId) return null;
+        return {
+            isDecoupled: false,
+            stackId: m.targetStackId,
+            stackEntry: m.targetStack,
+            database: m.database,
+            features: [],
+        };
+    }
+
+    // Migraciones múltiples → tratar como decoupled. Identificar frontend/backend
+    // por categoría del stack destino. Si no podemos distinguir claramente,
+    // tratamos la primera con UI como frontend.
+    const findFrontend = (mig) => {
+        const tags = mig.targetStack?.tags || [];
+        const cat = mig.targetStack?.category || mig.targetCategoryId || '';
+        return tags.includes('ssr') || tags.includes('spa') || cat.includes('frontend') || cat.includes('fullstack');
+    };
+    const findBackend = (mig) => {
+        const tags = mig.targetStack?.tags || [];
+        const cat = mig.targetStack?.category || mig.targetCategoryId || '';
+        return tags.includes('api') || cat.includes('backend');
+    };
+
+    const frontMig = migs.find(findFrontend) || migs[0];
+    const backMig = migs.find(findBackend) || migs.find((m) => m !== frontMig);
+
+    if (!frontMig?.targetStackId) return null;
+
+    return {
+        isDecoupled: true,
+        frontend: { stackId: frontMig.targetStackId, stackEntry: frontMig.targetStack },
+        backend: backMig ? { stackId: backMig.targetStackId, stackEntry: backMig.targetStack } : undefined,
+        database: frontMig.database || backMig?.database,
+        features: [],
+    };
 }
 
 /**

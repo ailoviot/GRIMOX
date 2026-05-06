@@ -42,6 +42,7 @@ export async function inject(projectPath, config) {
     await createGitignore(projectPath);
     await createConfigYml(projectPath);
     await createReadme(projectPath);
+    await createHelpScript(projectPath);
 }
 
 /**
@@ -153,6 +154,11 @@ async function modifyPackageJson(projectPath, port, vendorRef) {
     if (!pkg.scripts['build:fresh']) {
         // Build fresco: purga total + build. Mismo propósito que dev:fresh.
         pkg.scripts['build:fresh'] = 'grimox-daemon purge-all && npm run build';
+    }
+    if (!pkg.scripts['grimox:help']) {
+        // Imprime resumen formateado de todos los scripts y CLIs Grimox del proyecto.
+        // El usuario lo invoca cuando no recuerda qué comando usar.
+        pkg.scripts['grimox:help'] = 'node scripts/grimox-help.mjs';
     }
 
     // Postinstall:
@@ -308,4 +314,108 @@ https://github.com/jhonalex949/GRIMOX/tree/main/packages/grimox-qa
 `;
 
     await writeFileSafe(join(projectPath, '.grimox', 'README.md'), content);
+}
+
+/**
+ * Creates scripts/grimox-help.mjs — a script that prints a formatted summary
+ * of all npm scripts + Grimox CLIs + PowerShell tips + common workflows.
+ * The user invokes it with `npm run grimox:help` when they forget which command to use.
+ */
+async function createHelpScript(projectPath) {
+    const content = `#!/usr/bin/env node
+// Prints a summary of all commands available in this project.
+// Usage: npm run grimox:help
+
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8'));
+
+const C = {
+    reset: '\\x1b[0m', bold: '\\x1b[1m', dim: '\\x1b[2m',
+    cyan: '\\x1b[36m', green: '\\x1b[32m', yellow: '\\x1b[33m', magenta: '\\x1b[35m',
+};
+
+const DESC = {
+    dev: 'Starts the dev server + the daemon (visible browser with Studio overlays).',
+    build: 'Builds for production. When done, automatically triggers QA (postbuild).',
+    start: 'Serves the production build.',
+    lint: 'Runs the framework linter on the project.',
+    qa: 'Runs visual QA reusing the already-open browser daemon. Requires "npm run dev" running in another terminal.',
+    'dev:studio': 'Starts only the Dev Studio (no dev server). Useful if you want the visible browser pointing to another server.',
+    'daemon:stop': 'Stops the daemon manually.',
+    'daemon:status': 'Shows whether the daemon is alive and on what port/PID.',
+    'daemon:demo': 'Starts daemon + opens browser immediately with overlays for test/demo.',
+    'daemon:purge': 'Kills ALL Grimox daemons + Playwright chromiums on the system. For zombie cleanup.',
+    'dev:fresh': 'Purges zombie daemon + starts dev clean. Use if "npm run dev" hangs or the browser does not appear.',
+    'build:fresh': 'Purges zombie daemon + runs a clean build.',
+    'grimox:help': 'Shows this help.',
+    postinstall: 'Auto hook after "npm install". Shows banner + launches daemon.',
+    predev: 'Auto hook before "npm run dev". Launches the daemon in background.',
+    prebuild: 'Auto hook before "npm run build". Kills processes on dev ports and relaunches daemon.',
+    postbuild: 'Auto hook after "npm run build". Spins up a temp server and runs QA against it.',
+};
+
+const isHook = (n) => ['postinstall', 'postbuild', 'predev', 'prebuild'].includes(n);
+
+console.log(\`
+\${C.magenta}\${C.bold}╔══════════════════════════════════════════════════════════════╗
+║  Grimox · Available commands in this project                 ║
+╚══════════════════════════════════════════════════════════════╝\${C.reset}
+
+\${C.cyan}\${C.bold}1) npm scripts you invoke yourself  \${C.dim}(npm run <script>)\${C.reset}
+\`);
+
+const scripts = pkg.scripts || {};
+const userFacing = [], hooks = [];
+for (const [name, cmd] of Object.entries(scripts)) {
+    if (isHook(name)) hooks.push([name, cmd]);
+    else userFacing.push([name, cmd]);
+}
+
+for (const [name, cmd] of userFacing) {
+    const desc = DESC[name] || \`\${C.dim}(no description · runs: \${cmd})\${C.reset}\`;
+    console.log(\`  \${C.green}\${C.bold}npm run \${name}\${C.reset}\`);
+    console.log(\`    \${C.dim}\${desc}\${C.reset}\\n\`);
+}
+
+if (hooks.length) {
+    console.log(\`\${C.yellow}\${C.bold}2) Auto hooks  \${C.dim}(npm fires them itself — do not invoke manually)\${C.reset}\\n\`);
+    for (const [name] of hooks) {
+        const desc = DESC[name] || '';
+        console.log(\`  \${C.yellow}\${name}\${C.reset}  \${C.dim}→ \${desc}\${C.reset}\`);
+    }
+    console.log();
+}
+
+console.log(\`\${C.cyan}\${C.bold}3) Grimox CLIs via npx  \${C.dim}(one-off uses without a script wrapper)\${C.reset}\\n\`);
+console.log(\`  \${C.green}npx grimox-qa --help\${C.reset}        \${C.dim}— all QA flags\${C.reset}\`);
+console.log(\`  \${C.green}npx grimox-daemon --help\${C.reset}    \${C.dim}— daemon subcommands\${C.reset}\`);
+console.log(\`  \${C.green}npx grimox-dev-studio\${C.reset}       \${C.dim}— start only the dev studio\${C.reset}\`);
+console.log(\`  \${C.green}npx grimox-banner\${C.reset}           \${C.dim}— show the install ASCII banner\${C.reset}\`);
+console.log();
+
+console.log(\`\${C.cyan}\${C.bold}4) PowerShell tips (Windows)\${C.reset}\\n\`);
+console.log(\`  \${C.dim}• "&&" does not work in PowerShell 5.x → use ";" or "if (\\$?) { ... }".\${C.reset}\`);
+console.log(\`  \${C.dim}• grimox-* binaries live in node_modules\\\\.bin → invoke them via\${C.reset}\`);
+console.log(\`  \${C.dim}  "npm run <script>" or "npx grimox-<something>".\${C.reset}\`);
+console.log(\`  \${C.dim}• "rm -rf" does not exist → use "Remove-Item -Recurse -Force <path>".\${C.reset}\`);
+console.log();
+
+console.log(\`\${C.cyan}\${C.bold}5) Common workflows\${C.reset}\\n\`);
+console.log(\`  \${C.bold}Daily development:\${C.reset}\`);
+console.log(\`    \${C.dim}Terminal 1 →\${C.reset} \${C.green}npm run dev\${C.reset}\`);
+console.log(\`    \${C.dim}Terminal 2 →\${C.reset} \${C.green}npm run qa\${C.reset}      \${C.dim}# when you want to run QA\${C.reset}\\n\`);
+console.log(\`  \${C.bold}Something hung (zombie browser, lost daemon):\${C.reset}\`);
+console.log(\`    \${C.green}npm run dev:fresh\${C.reset}\\n\`);
+console.log(\`  \${C.bold}CI-style final validation:\${C.reset}\`);
+console.log(\`    \${C.green}npm run build\${C.reset}        \${C.dim}# postbuild triggers QA against prod automatically\${C.reset}\\n\`);
+console.log(\`  \${C.bold}Diagnose daemon:\${C.reset}\`);
+console.log(\`    \${C.green}npm run daemon:status\${C.reset}    \${C.dim}# is it alive?\${C.reset}\`);
+console.log(\`    \${C.green}npm run daemon:purge\${C.reset}     \${C.dim}# kill everything and start clean\${C.reset}\\n\`);
+`;
+
+    await writeFileSafe(join(projectPath, 'scripts', 'grimox-help.mjs'), content);
 }

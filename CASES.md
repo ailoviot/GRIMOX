@@ -309,7 +309,7 @@ Cursor already knows how to help him with Next.js 15 because Grimox taught it.
 
 Alex looks at the project structure. Everything is ready: Supabase connected, Tailwind configured, Docker prepared. But... the pages are empty. He only has the welcome template. He needs the complete app: pet pages, appointments, vaccinations, owners, billing.
 
-He could code it manually — but he remembers that Grimox generated a skill called `/grimox-dev`. He opens **Claude Code**:
+He could code it manually — but he remembers that Grimox generated a skill called `/grimox-dev`. Right after the scaffold finished, Grimox detected that his VSCode was open in the parent folder and offered to open the new project in a fresh IDE window — he accepted, and the new window already has the slash commands loaded. He opens **Claude Code** there:
 
 ```bash
 claude

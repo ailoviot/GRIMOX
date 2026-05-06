@@ -174,6 +174,82 @@ export async function injectOverlays(page, level) {
         flash.id = 'grimox-qa-flash';
         flash.innerHTML = '<span class="gx-flash-icon"></span>';
         document.body.appendChild(flash);
+
+        // Empuja el contenido hacia abajo según la altura real del banner.
+        // Además desplaza los headers position:sticky/fixed que estarían tapados,
+        // porque el padding al <html> no afecta a esos elementos.
+        const root = document.documentElement;
+        const STICKY_ATTR = 'data-gx-original-top';
+        const BANNER_IDS = new Set(['grimox-qa-banner','grimox-qa-progress','grimox-qa-flash','grimox-studio-banner','grimox-studio-toast','grimox-studio-scanline','grimox-studio-ambient-pulse']);
+
+        // Escanea recursivamente el DOM buscando elementos position:fixed/sticky
+        // con top cercano a 0. No depende de nombres de clase ni tags semánticos
+        // (necesario para Tailwind utility classes como "sticky top-0", "fixed top-0").
+        const findStickyTop = () => {
+            const out = [];
+            const MAX_VISITED = 3000;
+            const MAX_RESULTS = 60;
+            let visited = 0;
+            const visit = (el) => {
+                if (visited >= MAX_VISITED || out.length >= MAX_RESULTS) return;
+                visited++;
+                if (BANNER_IDS.has(el.id)) return;
+                const cs = window.getComputedStyle(el);
+                if (cs.position === 'fixed' || cs.position === 'sticky') {
+                    const topVal = parseFloat(cs.top);
+                    if (!isNaN(topVal) && topVal < 4) {
+                        out.push(el);
+                        return; // no descender — un sticky dentro de un sticky es muy raro
+                    }
+                }
+                for (const child of el.children) visit(child);
+            };
+            visit(document.body);
+            return out;
+        };
+
+        const restoreSticky = () => {
+            for (const el of document.querySelectorAll(`[${STICKY_ATTR}]`)) {
+                el.style.removeProperty('top');
+                el.removeAttribute(STICKY_ATTR);
+            }
+        };
+
+        const applySticky = (offset) => {
+            for (const el of findStickyTop()) {
+                if (el.hasAttribute(STICKY_ATTR)) continue;
+                const cs = window.getComputedStyle(el);
+                const orig = parseFloat(cs.top) || 0;
+                el.setAttribute(STICKY_ATTR, String(orig));
+                el.style.setProperty('top', (orig + offset) + 'px', 'important');
+            }
+        };
+
+        const updatePad = () => {
+            restoreSticky();
+            if (banner.classList.contains('hide')) { root.style.paddingTop = ''; return; }
+            const h = Math.ceil(banner.getBoundingClientRect().height);
+            if (h > 0) {
+                root.style.paddingTop = h + 'px';
+                applySticky(h);
+            }
+        };
+        updatePad();
+        if (typeof ResizeObserver !== 'undefined') {
+            const ro = new ResizeObserver(() => updatePad());
+            ro.observe(banner);
+        }
+
+        // MutationObserver: re-escanea cuando aparecen elementos nuevos (SPAs).
+        // Throttled para no degradar performance.
+        let mutTimer = null;
+        if (typeof MutationObserver !== 'undefined') {
+            const mo = new MutationObserver(() => {
+                if (mutTimer) return;
+                mutTimer = setTimeout(() => { mutTimer = null; updatePad(); }, 250);
+            });
+            mo.observe(document.body, { childList: true, subtree: true });
+        }
     }).catch(() => {});
 }
 
@@ -342,6 +418,71 @@ const STUDIO_STYLES = `
     animation: gx-studio-dots 1.4s steps(4, end) infinite;
 }
 
+/* ── Botón colapsar / expandir ─────────────────────────────────────────── */
+#grimox-studio-banner .gx-collapse-btn {
+    pointer-events: auto;
+    margin-left: 8px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: white;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+
+#grimox-studio-banner .gx-collapse-btn:hover {
+    background: rgba(0, 0, 0, 0.45);
+    transform: scale(1.08);
+}
+
+/* ── Estado colapsado: mini píldora flotante abajo-derecha ─────────────── */
+#grimox-studio-banner.gx-collapsed {
+    top: auto;
+    bottom: 16px;
+    left: auto;
+    right: 16px;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border-radius: 50%;
+    justify-content: center;
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+    border-bottom: none;
+}
+
+#grimox-studio-banner.gx-collapsed .gx-brand,
+#grimox-studio-banner.gx-collapsed .gx-route,
+#grimox-studio-banner.gx-collapsed .gx-status,
+#grimox-studio-banner.gx-collapsed .gx-sep {
+    display: none;
+}
+
+#grimox-studio-banner.gx-collapsed .gx-live {
+    font-size: 0;
+    margin-right: 4px;
+}
+
+#grimox-studio-banner.gx-collapsed .gx-live::before {
+    width: 12px;
+    height: 12px;
+}
+
+#grimox-studio-banner.gx-collapsed .gx-collapse-btn {
+    margin-left: 0;
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    border-color: transparent;
+}
+
 #grimox-studio-toast {
     position: fixed;
     top: 40px;
@@ -457,6 +598,11 @@ export async function injectStudioOverlays(page, { route = '/', status = 'ready'
         ({ route, status }) => {
             if (document.getElementById('grimox-studio-banner')) return;
 
+            const STORAGE_KEY = 'grimox-studio-collapsed';
+            const wantsCollapsed = (() => {
+                try { return localStorage.getItem(STORAGE_KEY) === '1'; } catch { return false; }
+            })();
+
             const banner = document.createElement('div');
             banner.id = 'grimox-studio-banner';
             banner.innerHTML = `
@@ -466,6 +612,7 @@ export async function injectStudioOverlays(page, { route = '/', status = 'ready'
                 <span class="gx-sep">·</span>
                 <span class="gx-route">${route}</span>
                 <span class="gx-status"><span class="gx-status-text">${status}</span><span class="gx-dots"></span></span>
+                <button type="button" class="gx-collapse-btn" aria-label="Toggle Grimox Studio panel" title="Colapsar / expandir">−</button>
             `;
             document.body.appendChild(banner);
 
@@ -485,6 +632,105 @@ export async function injectStudioOverlays(page, { route = '/', status = 'ready'
             const pulse = document.createElement('div');
             pulse.id = 'grimox-studio-ambient-pulse';
             document.body.appendChild(pulse);
+
+            // Empuja el contenido hacia abajo según la altura real del banner.
+            // Además desplaza los headers position:sticky/fixed que estarían tapados,
+            // porque el padding al <html> no afecta a esos elementos.
+            const root = document.documentElement;
+            const SAVED_PAD = root.style.getPropertyValue('padding-top');
+            const setPad = (px) => { root.style.paddingTop = px + 'px'; };
+            const clearPad = () => { root.style.paddingTop = SAVED_PAD || ''; };
+
+            const STICKY_ATTR = 'data-gx-original-top';
+            const BANNER_IDS = new Set(['grimox-qa-banner','grimox-qa-progress','grimox-qa-flash','grimox-studio-banner','grimox-studio-toast','grimox-studio-scanline','grimox-studio-ambient-pulse']);
+
+            // Escanea recursivamente el DOM buscando elementos position:fixed/sticky
+            // con top cercano a 0. No depende de nombres de clase ni tags semánticos
+            // (necesario para Tailwind utility classes como "sticky top-0", "fixed top-0").
+            const findStickyTop = () => {
+                const out = [];
+                const MAX_VISITED = 3000;
+                const MAX_RESULTS = 60;
+                let visited = 0;
+                const visit = (el) => {
+                    if (visited >= MAX_VISITED || out.length >= MAX_RESULTS) return;
+                    visited++;
+                    if (BANNER_IDS.has(el.id)) return;
+                    const cs = window.getComputedStyle(el);
+                    if (cs.position === 'fixed' || cs.position === 'sticky') {
+                        const topVal = parseFloat(cs.top);
+                        if (!isNaN(topVal) && topVal < 4) {
+                            out.push(el);
+                            return;
+                        }
+                    }
+                    for (const child of el.children) visit(child);
+                };
+                visit(document.body);
+                return out;
+            };
+
+            const restoreSticky = () => {
+                for (const el of document.querySelectorAll(`[${STICKY_ATTR}]`)) {
+                    el.style.removeProperty('top');
+                    el.removeAttribute(STICKY_ATTR);
+                }
+            };
+
+            const applySticky = (offset) => {
+                for (const el of findStickyTop()) {
+                    if (el.hasAttribute(STICKY_ATTR)) continue;
+                    const cs = window.getComputedStyle(el);
+                    const orig = parseFloat(cs.top) || 0;
+                    el.setAttribute(STICKY_ATTR, String(orig));
+                    el.style.setProperty('top', (orig + offset) + 'px', 'important');
+                }
+            };
+
+            const updatePad = () => {
+                restoreSticky();
+                if (banner.classList.contains('gx-collapsed')) { clearPad(); return; }
+                const h = Math.ceil(banner.getBoundingClientRect().height);
+                if (h > 0) {
+                    setPad(h);
+                    applySticky(h);
+                }
+            };
+
+            const collapseBtn = banner.querySelector('.gx-collapse-btn');
+            const setCollapsed = (collapsed) => {
+                banner.classList.toggle('gx-collapsed', collapsed);
+                if (collapseBtn) collapseBtn.textContent = collapsed ? '↗' : '−';
+                if (collapseBtn) collapseBtn.title = collapsed ? 'Expandir' : 'Colapsar';
+                try { localStorage.setItem(STORAGE_KEY, collapsed ? '1' : '0'); } catch {}
+                updatePad();
+            };
+
+            if (collapseBtn) {
+                collapseBtn.addEventListener('click', (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    setCollapsed(!banner.classList.contains('gx-collapsed'));
+                });
+            }
+
+            if (wantsCollapsed) setCollapsed(true);
+            else updatePad();
+
+            if (typeof ResizeObserver !== 'undefined') {
+                const ro = new ResizeObserver(() => updatePad());
+                ro.observe(banner);
+            }
+
+            // MutationObserver: re-escanea cuando aparecen elementos sticky/fixed
+            // nuevos (caso típico en SPAs al navegar). Throttled.
+            let mutTimer = null;
+            if (typeof MutationObserver !== 'undefined') {
+                const mo = new MutationObserver(() => {
+                    if (mutTimer) return;
+                    mutTimer = setTimeout(() => { mutTimer = null; updatePad(); }, 250);
+                });
+                mo.observe(document.body, { childList: true, subtree: true });
+            }
         },
         { route, status }
     ).catch(() => {});

@@ -1,6 +1,6 @@
 {
     "name": "grimox-qa",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "QA visual autónomo para proyectos Grimox. Ejecuta Playwright headed/headless sobre un dev server, descubre rutas automáticamente y reporta con exit codes. Universal: funciona con cualquier LLM/IDE vía npm scripts.",
     "type": "module",
     "main": "./src/index.js",

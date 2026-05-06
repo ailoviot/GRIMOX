@@ -1,9 +1,11 @@
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawn } from 'node:child_process';
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import { cloneTemplate, initGit } from '../utils/git-helpers.js';
 import { exists, writeFileSafe, readJson, copyDir, ensureDir } from '../utils/fs-helpers.js';
+import { detectIDE, isBinaryAvailable, pathsAreEqual } from '../utils/ide-detector.js';
 import { injectFeatures } from './feature-injector.js';
 import { logger } from '../utils/logger.js';
 
@@ -51,6 +53,10 @@ export async function scaffold(config) {
 
         // Mostrar resultado
         displayResult(config, projectPath);
+
+        // Si detectamos un IDE abierto en una carpeta padre, ofrecer abrir
+        // el proyecto en una ventana nueva para que detecte los slash commands.
+        await maybeOpenInIDE(projectPath);
     } catch (err) {
         spinner.stop('Error');
         throw err;
@@ -250,6 +256,65 @@ function displayResult(config, projectPath) {
     console.log(pc.green(pc.bold('  │')) + '  📁 .ai/skills/ (skills: cualquier LLM)'.padEnd(46) + pc.green(pc.bold('│')));
     console.log(pc.green(pc.bold('  │')) + '  📄 .ai/rules.md (reglas: cualquier LLM)'.padEnd(46) + pc.green(pc.bold('│')));
     console.log(pc.green(pc.bold('  ╰───────────────────────────────────────────────╯')));
+    console.log();
+}
+
+/**
+ * Si detectamos un IDE abierto en una carpeta distinta del proyecto recién
+ * creado, ofrece abrirlo en una ventana nueva para que reconozca los
+ * slash commands de Claude Code (`/grimox-dev`, etc.).
+ *
+ * Sin IDE detectado → no hace nada (terminal pelada, el usuario abrirá a mano).
+ * Si el usuario rechaza, o el binario del IDE no está en el PATH → muestra
+ * un mensaje pidiendo cerrar y abrir el proyecto manualmente.
+ */
+async function maybeOpenInIDE(projectPath) {
+    const ide = detectIDE();
+    if (!ide) return;
+
+    // Si por alguna razón el workspace abierto YA es el proyecto, no hay nada que hacer.
+    if (pathsAreEqual(ide.workspaceFolder, projectPath)) return;
+
+    const where = ide.workspaceFolder ? pc.cyan(ide.workspaceFolder) : pc.cyan('otro workspace');
+    const open = await p.confirm({
+        message:
+            `Tu ${ide.name} parece estar abierto en ${where}.\n  ` +
+            `¿Abrir ${pc.cyan(projectPath)} en una ventana nueva del IDE\n  ` +
+            `para que reconozca los slash commands /grimox-dev, /grimox-docs, /grimox-migrate?`,
+        initialValue: true,
+    });
+
+    if (p.isCancel(open) || !open) {
+        showReopenTip(projectPath);
+        return;
+    }
+
+    const available = await isBinaryAvailable(ide.binary);
+    if (!available) {
+        showReopenTip(projectPath);
+        return;
+    }
+
+    try {
+        const child = spawn(ide.binary, [projectPath], {
+            detached: true,
+            stdio: 'ignore',
+            shell: true, // necesario en Windows para resolver code.cmd / cursor.cmd
+        });
+        child.unref();
+        console.log();
+        logger.success(`Abriendo el proyecto en una ventana nueva de ${ide.name}...`);
+        console.log();
+    } catch {
+        showReopenTip(projectPath);
+    }
+}
+
+function showReopenTip(projectPath) {
+    console.log();
+    console.log(pc.dim('  Para que tu IDE reconozca los slash commands /grimox-dev,'));
+    console.log(pc.dim('  /grimox-docs y /grimox-migrate, cierra el IDE y vuélvelo'));
+    console.log(pc.dim(`  a abrir directamente en: ${projectPath}`));
     console.log();
 }
 

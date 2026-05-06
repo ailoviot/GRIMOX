@@ -56,6 +56,8 @@ grimox create
 
 ## CREATE NEW PROJECT
 
+> **Note about IDE integration:** at the end of every `grimox create`, if the CLI was launched from the integrated terminal of a VSCode-family IDE (VSCode, Cursor, Windsurf) and the open workspace is a parent of the new project, Grimox will ask `¿Open <project> in a new IDE window? (Y/n)`. Accepting opens the project in a fresh window so slash commands like `/grimox-dev` are recognized immediately. The examples below omit this prompt for brevity, but it appears after the "✔ Project ready" line.
+
 ### Example 1: Integrated Web Fullstack — Next.js
 
 ```

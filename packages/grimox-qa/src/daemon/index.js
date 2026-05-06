@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import pc from 'picocolors';
 import { writePidFile, removePidFile, isDaemonAlive } from './pid-manager.js';
 import { PortPoller } from './port-poller.js';
@@ -6,6 +8,24 @@ import { IpcServer } from './ipc-server.js';
 import { BrowserManager } from './browser-manager.js';
 
 const IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 15 min sin dev server activo → auto-kill
+
+/**
+ * Lee el puerto del proyecto desde .grimox/qa-plan.yml.
+ * Devuelve null si el archivo no existe o no tiene baseUrl parseable.
+ *
+ * Cuando el proyecto declara su puerto, el daemon SOLO ese puerto — evita
+ * detectar otros servicios del usuario (Evolution API, MQTT brokers, etc.)
+ * que puedan estar respondiendo en puertos genéricos como :8080.
+ */
+function readProjectPort(cwd) {
+    try {
+        const yml = readFileSync(join(cwd, '.grimox', 'qa-plan.yml'), 'utf8');
+        const m = yml.match(/^\s*baseUrl:\s*https?:\/\/[^:\s]+:(\d+)/m);
+        return m ? Number(m[1]) : null;
+    } catch {
+        return null;
+    }
+}
 
 /**
  * Orquestador del daemon.
@@ -46,7 +66,15 @@ export async function runDaemon(opts = {}) {
         },
     });
 
+    const projectPort = readProjectPort(cwd);
+    const pollerOpts = {};
+    if (projectPort) {
+        pollerOpts.ports = [projectPort];
+        console.log(pc.dim(`   Project port from qa-plan.yml: :${projectPort} (only this port will be polled)`));
+    }
+
     const poller = new PortPoller({
+        ...pollerOpts,
         onFound: async (port) => {
             currentBaseUrl = `http://localhost:${port}`;
             lastServerSeenAt = Date.now();

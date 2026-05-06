@@ -224,6 +224,24 @@ El flag `--yes` salta las preguntas y usa la configuración por defecto.
 - Intenta clonar desde `github:grimox-templates/[repo-name]` via giget
 - Si el template remoto no existe, genera una estructura base local (package.json + README + src/)
 
+**Apertura automática del proyecto en el IDE:**
+
+Después de crear el proyecto, si Grimox detecta que el CLI se ejecutó desde la terminal integrada de un IDE de la familia VSCode (VSCode, Cursor, Windsurf) **y** el workspace abierto es una carpeta padre (no el proyecto en sí), ofrece abrir el nuevo proyecto en una ventana nueva del IDE:
+
+```
+◇  Tu VSCode parece estar abierto en c:/tmp.
+│  ¿Abrir c:/tmp/mi-app en una ventana nueva del IDE
+│  para que reconozca los slash commands /grimox-dev, /grimox-docs, /grimox-migrate? (Y/n)
+```
+
+Esto evita un detalle conocido: Claude Code escanea `<workspace>/.claude/commands/` una sola vez al abrir el workspace. Si creas un proyecto dentro de un workspace padre ya abierto, los slash commands no se descubren hasta que el IDE se recarga o se reabre directamente en la carpeta del proyecto.
+
+- **Sin IDE detectado** (terminal pelada) → no pregunta nada, el output queda limpio.
+- **El usuario acepta** → se invoca el binario del IDE con la ruta del proyecto; se abre una ventana nueva.
+- **El usuario rechaza O el binario del IDE no está en el PATH** → mensaje de fallback pidiendo cerrar el IDE y reabrirlo directamente en la carpeta del proyecto.
+
+La detección usa env vars estándar (`TERM_PROGRAM=vscode`, `VSCODE_GIT_IPC_HANDLE`, `CURSOR_TRACE_ID`, etc.); ver [`src/utils/ide-detector.js`](src/utils/ide-detector.js).
+
 ### `grimox migrate`
 
 Migra proyectos legacy a stacks modernos usando un LLM. Un único flujo AI-powered: analiza el código real del proyecto, genera un plan detallado (`MIGRATION_PLAN.md`) y guía la ejecución paso a paso.
@@ -244,6 +262,10 @@ La detección es automática: busca API keys en variables de entorno y `.env`, p
 | `--apply` | Aplicar migración automáticamente (crea backup en `.grimox-backup/`) |
 | `--frontend <path>` | Ruta al frontend en proyecto desacoplado |
 | `--backend <path>` | Ruta al backend en proyecto desacoplado |
+
+**Inyección automática de QA tras migración (solo modo apply):**
+
+Cuando se usa `grimox migrate --apply` y el stack de destino tiene UI (Next.js, Nuxt, SvelteKit, SPA con Vite, Astro, etc.), Grimox inyecta automáticamente el mismo tooling de QA que provee `grimox create`: tarball de `grimox-qa` en `.vendor/`, scripts del daemon en `package.json` (`dev:fresh`, `daemon:status`, `qa`, `grimox:help`, etc.), `.grimox/qa-plan.yml` con el `baseUrl` correcto, y `scripts/grimox-help.mjs`. La inyección ocurre **después** del backup y codemods, dentro de un `try/catch` — si falla por cualquier motivo (tarball ausente, config malformado, etc.), la migración finaliza exitosa con un warning. Stacks sin UI (solo backend, IoT, CLI) saltan este paso en silencio.
 
 **`grimox migrate` vs la skill `grimox-migrate` — dos puertas de entrada, mismo flujo:**
 
@@ -335,6 +357,7 @@ Para stacks web (Next.js, Nuxt, SvelteKit, SPAs basadas en Vite, Astro, sitios d
 | `daemon:purge` | `grimox-daemon purge-all` — mata TODOS los daemons de Grimox + chromiums de Playwright + zombies de `next start/dev` |
 | `dev:fresh` | `grimox-daemon purge-all && npm run dev` — garantía de estado limpio antes del dev |
 | `build:fresh` | `grimox-daemon purge-all && npm run build` — garantía de estado limpio antes del build |
+| `grimox:help` | `node scripts/grimox-help.mjs` — cheatsheet con colores de todos los scripts disponibles, comandos del daemon, flujos comunes y tips de PowerShell. Lee `package.json` dinámicamente para que cualquier script futuro también aparezca |
 
 **Comandos del CLI del daemon (también disponibles standalone con `npx grimox-daemon <cmd>`):**
 
@@ -356,6 +379,39 @@ Para stacks web (Next.js, Nuxt, SvelteKit, SPAs basadas en Vite, Astro, sitios d
 **Tipos de asserts soportados en `qa-plan.yml`:**
 
 `text_visible`, `text_not_visible`, `element_visible`, `element_not_visible`, `url_contains`, `redirect_to`, `status`, `no_console_errors`. Tipos de step: `goto`, `click`, `fill`, `login` (macro), `wait`.
+
+**UX del banner — colapsable y no bloqueante:**
+
+El banner de Grimox Studio y el banner de QA que aparecen dentro del browser visible están diseñados para no obstruir el contenido de la app:
+
+- **Push-padding**: cuando el banner se inyecta, agrega `padding-top` al `<html>` igual a la altura medida del banner. El flujo normal del documento se desplaza hacia abajo para que el header de la app quede visible debajo del banner.
+- **Soporte de headers sticky/fixed**: un escaneo recursivo del DOM busca elementos con `position: fixed` o `position: sticky` y `top` cercano a 0 (cubre clases utility de Tailwind como `class="sticky top-0"`, tags semánticos como `<header>`, `<nav>`, etc.). Esos elementos reciben un offset en su `top` igual a la altura del banner para que rendericen debajo del banner en lugar de quedar tapados. Los `top` originales se guardan en `data-gx-original-top` y se restauran al colapsar.
+- **Botón colapsar (`−`)** en el banner Studio lo contrae a una píldora 44×44 anclada abajo-derecha con el dot de estado en vivo. Otro click (`↗`) lo expande. La preferencia persiste en `localStorage` y sobrevive navegaciones SPA.
+- **MutationObserver** (throttled a 250ms) re-escanea elementos sticky nuevos que aparecen tras la carga inicial — importante para SPAs donde los headers se inyectan dinámicamente al navegar entre rutas.
+
+Implementación: [packages/grimox-qa/src/animations.js](packages/grimox-qa/src/animations.js).
+
+**Detección de puerto — desde `qa-plan.yml`, no por adivinanza:**
+
+El `PortPoller` del daemon, por defecto, probaría una lista genérica de puertos comunes (`3000, 3001, 3100, 3002, 4200, 5173, 4321, 8080`) cada 2 segundos. Esto causó un bug real: si el usuario tiene otro servicio local en `:8080` (ej. una Evolution API, broker MQTT, app Spring Boot), el daemon alternaba entre el dev server real y ese servicio no relacionado, abriendo múltiples browsers.
+
+Fix: el daemon ahora lee `<proyecto>/.grimox/qa-plan.yml`, extrae el puerto del `baseUrl: http://localhost:<puerto>`, y configura el poller para **probar únicamente ese puerto**. Cualquier otro servicio en la máquina queda ignorado. Busca esta línea cerca del inicio de `.grimox/daemon.log`:
+
+```
+Project port from qa-plan.yml: :3000 (only this port will be polled)
+```
+
+Si el archivo no existe o no se puede parsear, el daemon cae a la lista genérica de puertos (compatible hacia atrás). Implementación: [packages/grimox-qa/src/daemon/index.js](packages/grimox-qa/src/daemon/index.js).
+
+**Actualizar el tarball bundleado — `npm run qa:pack`:**
+
+Cuando cambies código bajo `packages/grimox-qa/src/...`, regenera el tarball con:
+
+```bash
+npm run qa:pack
+```
+
+Esto, en un solo paso atómico: bumpea la versión patch de `packages/grimox-qa/package.json` → corre `npm pack` → mueve el `.tgz` resultante a `templates/_vendor/grimox-qa.tgz`. El bump de versión es **obligatorio** — npm cachea tarballs locales `file:` por `(name, version)`, así que reusar la misma versión significa que `npm install` en proyectos consumidores se queda con el contenido VIEJO cacheado. Los proyectos NUEVOS (`grimox create`) y migraciones (`grimox migrate --apply`) generados DESPUÉS del `qa:pack` reciben automáticamente la versión nueva. Los proyectos EXISTENTES requieren upgrade manual: `cp templates/_vendor/grimox-qa.tgz <proyecto>/.vendor/grimox-qa.tgz` y luego `npm install grimox-qa --force` dentro de ese proyecto.
 
 ### Integraciones de IA generadas automáticamente
 
